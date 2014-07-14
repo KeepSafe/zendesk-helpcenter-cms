@@ -57,7 +57,7 @@ class MetaRepository(object):
 
 class ArticleRepository(object):
     def save_group(self, group, path):
-        group_path = os.path.join(path, group['name'])
+        group_path = os.path.join(path, slugify(group['name']))
         os.makedirs(group_path, exist_ok=True)
         return group_path
 
@@ -91,6 +91,23 @@ class ZendeskClient(object):
         response = requests.get(self.url_for('sections/{}/articles.json'.format(section_id)))
         response_data = response.json()
         return response_data['articles'] if response_data else []
+
+
+class WebTranslateItClient(object):
+    DEFAULT_URL = 'https://webtranslateit.com/api/projects/{}/{}'
+    API_KEY = 'pDLsTA3XPlO0rfRbTFroAw'
+
+    def url_for(self, path):
+        return WebTranslateItClient.DEFAULT_URL.format(WebTranslateItClient.API_KEY, path)
+
+    def create_file(self, filepath):
+        with open(filepath, 'r') as file:
+            linux_filepath = filepath.replace('\\', '/')
+            res = requests.post(self.url_for('files'),
+                                data={'file': linux_filepath, 'name': linux_filepath},
+                                files={'file': file})
+            print(linux_filepath)
+            print(res.text)
 
 
 class ImportTask(object):
@@ -134,11 +151,25 @@ class ExportTask(object):
 
 
 class TranslateTask(object):
+    TRANSLATE_EXTENSIONS = ['.md']
+
     def __init__(self, options):
         super().__init__()
+        self.options = options
+        self.translate = WebTranslateItClient()
+
+    def _is_file_to_translate(self, path):
+        _, ext = os.path.splitext(path)
+        name = os.path.basename(path)
+        return ext in TranslateTask.TRANSLATE_EXTENSIONS or name == MetaRepository.META_FILENAME
 
     def execute(self):
-        print('translate task')
+
+        for root, _, files in os.walk(self.options['root_folder']):
+
+            files = filter(self._is_file_to_translate, files)
+            for file in files:
+                self.translate.create_file(os.path.join(root, file))
 
 
 tasks = {
