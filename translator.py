@@ -11,6 +11,7 @@ import json
 import os
 import re
 import html2text
+import markdown
 import requests
 import unicodedata
 
@@ -40,54 +41,78 @@ LOGGER = Logger()
 
 class MetaRepository(object):
     # TODO possible name conflicts with articles
-    META_FILENAME = 'meta.json'
+    META_GROUP_FILENAME = '__group__.meta'
+    META_EXTENSION = '.meta'
+
+    def _group_filepath(self, path):
+        return os.path.join(path, MetaRepository.META_GROUP_FILENAME)
+
+    def _read_group(self, path):
+        filepath = self._group_filepath(path)
+        if os.path.exists(filepath):
+            with open(filepath, 'r') as file:
+                return json.load(file)
+        return None
 
     def save_group(self, group, path):
-        with open(os.path.join(path, MetaRepository.META_FILENAME), 'w') as file:
+        with open(self._group_filepath(path), 'w') as file:
             json.dump(group, file, indent=4, sort_keys=True)
 
     def save_article(self, article, path):
-        with open(os.path.join(path, slugify(article['name']) + '.json'), 'w') as file:
+        with open(os.path.join(path, article['name']) + MetaRepository.META_EXTENSION, 'w') as file:
             json.dump(article, file, indent=4, sort_keys=True)
 
-    def get_group_id(self, path):
-        meta_path = os.path.join(path, MetaRepository.META_FILENAME)
-        if os.path.exists(meta_path):
-            with open(meta_path, 'r') as file:
+    def group_id(self, path):
+        data = self._read_group(path)
+        return data['id'] if data else None
+
+    def article_id(self, path, article_name):
+        filepath = os.path.join(path, article_name + MetaRepository.META_EXTENSION)
+        if os.path.exists(filepath):
+            with open(filepath, 'r') as file:
                 data = json.load(file)
                 return data['id']
-        else:
-            return None
+        return None
 
     def is_category(self, path):
-        with open(os.path.join(path, MetaRepository.META_FILENAME), 'r') as file:
-            data = json.load(file)
-            return 'category_id' not in data
+        data = self._read_group(path)
+        return 'category_id' not in data
+
+    def get_articles(self, files):
+        return [article for article in files if
+                article.endswith(MetaRepository.META_EXTENSION) and article != MetaRepository.META_GROUP_FILENAME]
 
 
 class ContentRepository(object):
-    CONTENT_FILENAME = 'content.json'
+    CONTENT_FILENAME = '__group__.json'
+    CONTENT_EXTENSION = '.md'
+
+    def __init__(self):
+        super().__init__()
+        self.meta = MetaRepository()
 
     def is_content(self, name):
         return name == ContentRepository.CONTENT_FILENAME
 
     def save_group(self, group, path):
-        group_path = os.path.join(path, slugify(group['name']))
+        group_path = os.path.join(path, group['name'])
         os.makedirs(group_path, exist_ok=True)
         group_content = {
             'name': group['name'],
             'description': group['description']
         }
-        with open(os.path.join(path, ContentRepository.CONTENT_FILENAME), 'w') as file:
+        with open(os.path.join(group_path, ContentRepository.CONTENT_FILENAME), 'w') as file:
             json.dump(group_content, file, indent=4, sort_keys=True)
         return group_path
 
     def save_article(self, article, group_path):
-        file_content = html2text.html2text(article['body'])
-        with open(os.path.join(group_path, slugify(article['name']) + '.md'), 'w') as file:
+        filename = os.path.join(group_path, article['name'] + ContentRepository.CONTENT_EXTENSION)
+        with open(filename, 'w') as file:
+            file_content = html2text.html2text(article['body'])
             file.write(file_content)
+        return filename
 
-    def get_translated_groups(self, files):
+    def get_translated_group(self, files):
         result = {}
         master_name, master_ext = os.path.splitext(ContentRepository.CONTENT_FILENAME)
         for file in files:
@@ -101,9 +126,23 @@ class ContentRepository(object):
         return result
 
     def get_translated_articles(self, files):
-        articles = filter(lambda file: file.endswith('.md'), files)
-        for article in articles:
-            pass
+        result = {}
+        meta_articles = self.meta.get_articles(files)
+        for meta_article in meta_articles:
+            meta_name, _ = os.path.splitext(meta_article)
+            translated_articles = {}
+            articles = [article for article in files if
+                        article.startswith(meta_name) and article.endswith(ContentRepository.CONTENT_EXTENSION)]
+            for article in articles:
+                if article == meta_name + ContentRepository.CONTENT_EXTENSION:
+                    translated_articles['en-us'] = article
+                else:
+                    name, ext = os.path.splitext(article)
+                    if name.startswith(meta_name + '.') and ext == ContentRepository.CONTENT_EXTENSION:
+                        locale = name.split('.')[-1]
+                        translated_articles[locale] = article
+            result[meta_name] = translated_articles
+        return result
 
 
 class ZendeskClient(object):
@@ -138,7 +177,6 @@ class ZendeskClient(object):
                                   auth=(self.options['user'], self.options['password']),
                                   headers={'Content-type': 'application/json'})
             response_data = response.json()
-            print(translation)
             result.append(response_data['translation'])
         return result
 
@@ -150,8 +188,9 @@ class ZendeskClient(object):
         url = self.url_for('sections/{}/translations.json'.format(section_id))
         return self._translate_group(url, translations, requests.post)
 
-    def create_article_translation(self):
-        pass
+    def create_article_translation(self, article_id, translations):
+        url = self.url_for('articles/{}/translations.json'.format(article_id))
+        return self._translate_group(url, translations, requests.post)
 
     def update_category_translation(self, category_id, translations):
         url = self.url_for('categories/{}/translations.json'.format(category_id))
@@ -222,20 +261,21 @@ class ExportTask(object):
 
     def execute(self):
         for root, _, files in os.walk(self.options['root_folder']):
-            group_id = self.meta.get_group_id(root)
-            # TODO every folder should have this, if not it's a new group
+            group_id, group_translations = self._translated_group(root, files)
             if group_id:
-                groups = self._translated_groups(root, files)
-                # if self.meta.is_category(root):
-                # self.zendesk.create_category_translation(group_id, groups)
-                # else:
-                #     self.zendesk.create_section_translation(group_id, groups)
-            articles = self._translated_articles(files)
+                if self.meta.is_category(root):
+                    self.zendesk.create_category_translation(group_id, group_translations)
+                else:
+                    self.zendesk.create_section_translation(group_id, group_translations)
+            articles = self._translated_articles(root, files)
+            for article_id, article_translations in articles.items():
+                self.zendesk.create_article_translation(article_id, article_translations)
 
-    def _translated_groups(self, path, files):
-        groups = self.repo.get_translated_groups(files)
+    def _translated_group(self, path, files):
         result = []
-        for locale, filename in groups.items():
+        group = self.repo.get_translated_group(files)
+        group_id = self.meta.group_id(path)
+        for locale, filename in group.items():
             with open(os.path.join(path, filename), 'r') as file:
                 file_data = json.load(file)
                 translation = {
@@ -244,12 +284,24 @@ class ExportTask(object):
                     'locale': locale
                 }
                 result.append(translation)
-        return result
+        return group_id, result
 
-    def _translated_articles(self, files):
-        result = []
+    def _translated_articles(self, path, files):
+        result = {}
         articles = self.repo.get_translated_articles(files)
-
+        for article_name, article_details in articles.items():
+            article_id = self.meta.article_id(path, article_name)
+            for locale, article_filename in article_details.items():
+                with open(os.path.join(path, article_filename), 'r') as file:
+                    article_body = file.read()
+                    translation = {
+                        'title': article_name,
+                        'body': markdown.markdown(article_body),
+                        'locale': locale
+                    }
+                    translations = result.get(article_id, [])
+                    translations.append(translation)
+                    result[article_id] = translations
         return result
 
 
