@@ -27,16 +27,20 @@ def slugify(value):
 
 
 class Logger(object):
+
     def __init__(self, verbose=False):
         super().__init__()
         self.verbose = verbose
 
-    def log(self, message, *args):
+    def debug(self, message, *args):
         if self.verbose:
             print(message.format(*args))
 
+    def info(self, message, *args):
+        print(message.format(*args))
 
-LOGGER = Logger()
+
+LOG = Logger()
 
 
 class MetaRepository(object):
@@ -51,15 +55,21 @@ class MetaRepository(object):
         filepath = self._group_filepath(path)
         if os.path.exists(filepath):
             with open(filepath, 'r') as file:
+                LOG.debug('reading group meta {}', filepath)
                 return json.load(file)
+        LOG.debug('unable to read group meta {}', filepath)
         return None
 
     def save_group(self, group, path):
-        with open(self._group_filepath(path), 'w') as file:
+        meta_path = self._group_filepath(path)
+        with open(meta_path, 'w') as file:
+            LOG.info('saving group meta info {} to path {}', group['name'], meta_path)
             json.dump(group, file, indent=4, sort_keys=True)
 
     def save_article(self, article, path):
-        with open(os.path.join(path, article['name']) + MetaRepository.META_EXTENSION, 'w') as file:
+        meta_path = os.path.join(path, article['name']) + MetaRepository.META_EXTENSION
+        with open(meta_path, 'w') as file:
+            LOG.info('saving article meta info {} to path {}', article['name'], meta_path)
             json.dump(article, file, indent=4, sort_keys=True)
 
     def group_id(self, path):
@@ -70,8 +80,10 @@ class MetaRepository(object):
         filepath = os.path.join(path, article_name + MetaRepository.META_EXTENSION)
         if os.path.exists(filepath):
             with open(filepath, 'r') as file:
+                LOG.debug('reading article meta {}', filepath)
                 data = json.load(file)
                 return data['id']
+        LOG.debug('unable to read article meta {}', filepath)
         return None
 
     def is_category(self, path):
@@ -101,13 +113,16 @@ class ContentRepository(object):
             'name': group['name'],
             'description': group['description']
         }
-        with open(os.path.join(group_path, ContentRepository.CONTENT_FILENAME), 'w') as file:
+        content_path = os.path.join(group_path, ContentRepository.CONTENT_FILENAME)
+        with open(content_path, 'w') as file:
+            LOG.info('saving group content {} to path {}', group['name'], content_path)
             json.dump(group_content, file, indent=4, sort_keys=True)
         return group_path
 
     def save_article(self, article, group_path):
         filename = os.path.join(group_path, article['name'] + ContentRepository.CONTENT_EXTENSION)
         with open(filename, 'w') as file:
+            LOG.info('saving article content {} to path {}', article['name'], filename)
             file_content = html2text.html2text(article['body'])
             file.write(file_content)
         return filename
@@ -123,6 +138,7 @@ class ContentRepository(object):
                 if name.startswith(master_name + '.') and ext == master_ext:
                     locale = name.split('.')[-1]
                     result[locale] = file
+
         return result
 
     def get_translated_articles(self, files):
@@ -170,7 +186,7 @@ class ZendeskClient(object):
         response_data = response.json()
         return response_data['articles'] if response_data else []
 
-    def _translate_group(self, url, translations, request_fn):
+    def _create_translation(self, url, translations, request_fn):
         result = []
         for translation in translations:
             response = request_fn(url, data=json.dumps({'translation': translation}),
@@ -182,15 +198,15 @@ class ZendeskClient(object):
 
     def create_category_translation(self, category_id, translations):
         url = self.url_for('categories/{}/translations.json'.format(category_id))
-        return self._translate_group(url, translations, requests.post)
+        return self._create_translation(url, translations, requests.post)
 
     def create_section_translation(self, section_id, translations):
         url = self.url_for('sections/{}/translations.json'.format(section_id))
-        return self._translate_group(url, translations, requests.post)
+        return self._create_translation(url, translations, requests.post)
 
     def create_article_translation(self, article_id, translations):
         url = self.url_for('articles/{}/translations.json'.format(article_id))
-        return self._translate_group(url, translations, requests.post)
+        return self._create_translation(url, translations, requests.post)
 
     def update_category_translation(self, category_id, translations):
         url = self.url_for('categories/{}/translations.json'.format(category_id))
@@ -220,6 +236,7 @@ class WebTranslateItClient(object):
 
 
 class ImportTask(object):
+
     def __init__(self, options):
         super().__init__()
         self.options = options
@@ -228,11 +245,13 @@ class ImportTask(object):
         self.meta = MetaRepository()
 
     def execute(self):
+        LOG.info('executing import task...')
         self.create_categories()
 
     def create_categories(self):
         categories = self.zendesk.fetch_categories()
         for category in categories:
+            LOG.debug('creating category {}', category['name'])
             category_path = self.repository.save_group(category, self.options['root_folder'])
             self.meta.save_group(category, category_path)
             self.create_sections(category['id'], category_path)
@@ -240,6 +259,7 @@ class ImportTask(object):
     def create_sections(self, category_id, category_path):
         sections = self.zendesk.fetch_sections(category_id)
         for section in sections:
+            LOG.debug('creating section {}', section['name'])
             section_path = self.repository.save_group(section, category_path)
             self.meta.save_group(section, section_path)
             self.create_articles(section['id'], section_path)
@@ -247,11 +267,13 @@ class ImportTask(object):
     def create_articles(self, section_id, section_path):
         articles = self.zendesk.fetch_articles(section_id)
         for article in articles:
+            LOG.debug('creating article {}', article['name'])
             self.repository.save_article(article, section_path)
             self.meta.save_article(article, section_path)
 
 
 class ExportTask(object):
+
     def __init__(self, options):
         super().__init__()
         self.options = options
@@ -260,15 +282,18 @@ class ExportTask(object):
         self.repo = ContentRepository()
 
     def execute(self):
+        LOG.info('executing export task...')
         for root, _, files in os.walk(self.options['root_folder']):
             group_id, group_translations = self._translated_group(root, files)
             if group_id:
+                LOG.info('exporting group {} from {}', group_id, root)
                 if self.meta.is_category(root):
                     self.zendesk.create_category_translation(group_id, group_translations)
                 else:
                     self.zendesk.create_section_translation(group_id, group_translations)
             articles = self._translated_articles(root, files)
             for article_id, article_translations in articles.items():
+                LOG.info('exporting article {} from {}', article_id, root)
                 self.zendesk.create_article_translation(article_id, article_translations)
 
     def _translated_group(self, path, files):
@@ -321,6 +346,7 @@ class TranslateTask(object):
         return ext in TranslateTask.TRANSLATE_EXTENSIONS or self.repo.is_content(name)
 
     def execute(self):
+        LOG.info('executing translate task...')
         for root, _, files in os.walk(self.options['root_folder']):
             files = filter(self.is_file_to_translate, files)
             for file in files:
@@ -361,7 +387,7 @@ def parse_options():
 
 def resolve_args(args, options):
     task = tasks[args.task](options)
-    LOGGER.verbose = args.verbose
+    LOG.verbose = args.verbose
 
     return task, options
 
