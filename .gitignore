@@ -1,6 +1,10 @@
 temp/
 .env/
-
+env/
+.wti
 
 .idea/
 *.iml
+
+*.sublime-project
+*.sublime-workspace

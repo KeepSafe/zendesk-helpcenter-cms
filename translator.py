@@ -172,52 +172,112 @@ class ZendeskClient(object):
         return ZendeskClient.DEFAULT_URL.format(self.options['company_name'], path)
 
     def fetch_categories(self):
-        response = requests.get(self.url_for('categories.json'))
+        url = self.url_for('categories.json')
+        LOG.debug('fetching categories from {}', url)
+        response = requests.get(url)
         response_data = response.json()
         return response_data['categories'] if response_data else []
 
     def fetch_sections(self, category_id):
-        response = requests.get(self.url_for('categories/{}/sections.json'.format(category_id)))
+        url = self.url_for('categories/{}/sections.json'.format(category_id))
+        LOG.debug('fetching sections from {}', url)
+        response = requests.get(url)
         response_data = response.json()
         return response_data['sections'] if response_data else []
 
     def fetch_articles(self, section_id):
-        response = requests.get(self.url_for('sections/{}/articles.json'.format(section_id)))
+        url = self.url_for('sections/{}/articles.json'.format(section_id))
+        LOG.debug('fetching articles from {}', url)
+        response = requests.get(url)
         response_data = response.json()
         return response_data['articles'] if response_data else []
 
-    def _create_translation(self, url, translations, request_fn):
-        result = []
+    def _create_translation(self, url, translation_data, request_fn):
+        response = request_fn(url, data=json.dumps(translation_data),
+                              auth=(self.options['user'], self.options['password']),
+                              headers={'Content-type': 'application/json'})
+        print(response.text)
+        response_data = response.json()
+        return response_data['translation']
+
+    def translate_category(self, category_id, translations):
+        missing_locales = self.missing_category_locales(category_id)
+        LOG.debug('missing locales for category {} are {}', category_id, missing_locales)
         for translation in translations:
-            response = request_fn(url, data=json.dumps({'translation': translation}),
-                                  auth=(self.options['user'], self.options['password']),
-                                  headers={'Content-type': 'application/json'})
-            response_data = response.json()
-            result.append(response_data['translation'])
-        return result
+            if translation['locale'] in missing_locales:
+                self.create_category_translation(category_id, translation)
+            else:
+                self.update_category_translation(category_id, translation)
 
-    def create_category_translation(self, category_id, translations):
+    def translate_section(self, section_id, translations):
+        missing_locales = self.missing_section_locales(section_id)
+        LOG.debug('missing locales for section {} are {}', section_id, missing_locales)
+        for translation in translations:
+            if translation['locale'] in missing_locales:
+                self.create_section_translation(section_id, translation)
+            else:
+                self.update_section_translation(section_id, translation)
+
+    def translate_article(self, article_id, translations):
+        missing_locales = self.missing_article_locales(article_id)
+        LOG.debug('missing locales for article {} are {}', article_id, missing_locales)
+        for translation in translations:
+            if translation['locale'] in missing_locales:
+                self.create_article_translation(article_id, translation)
+            else:
+                self.update_article_translation(article_id, translation)
+
+    def create_category_translation(self, category_id, translation):
         url = self.url_for('categories/{}/translations.json'.format(category_id))
-        return self._create_translation(url, translations, requests.post)
+        LOG.debug('creating category translation at {}', url)
+        return self._create_translation(url, {'translation': translation}, requests.post)
 
-    def create_section_translation(self, section_id, translations):
+    def create_section_translation(self, section_id, translation):
         url = self.url_for('sections/{}/translations.json'.format(section_id))
-        return self._create_translation(url, translations, requests.post)
+        LOG.debug('creating section translations at {}', url)
+        return self._create_translation(url, {'translation': translation}, requests.post)
 
-    def create_article_translation(self, article_id, translations):
+    def create_article_translation(self, article_id, translation):
         url = self.url_for('articles/{}/translations.json'.format(article_id))
-        return self._create_translation(url, translations, requests.post)
+        LOG.debug('creating article translations at {}', url)
+        return self._create_translation(url, {'translation': translation}, requests.post)
 
-    def update_category_translation(self, category_id, translations):
-        url = self.url_for('categories/{}/translations.json'.format(category_id))
-        return self._translate_group(url, translations, requests.put)
+    def update_category_translation(self, category_id, translation):
+        locale = translation['locale']
+        url = self.url_for('categories/{}/translations/{}.json'.format(category_id, locale))
+        del translation['locale']
+        LOG.debug('updating category translation at {}', url)
+        return self._create_translation(url, translation, requests.put)
 
-    def update_section_translation(self, section_id, translations):
-        url = self.url_for('sections/{}/translations.json'.format(section_id))
-        return self._translate_group(url, translations, requests.put)
+    def update_section_translation(self, section_id, translation):
+        locale = translation['locale']
+        url = self.url_for('sections/{}/translations/{}.json'.format(section_id, locale))
+        LOG.debug('updating section translation at {}', url)
+        return self._create_translation(url, translation, requests.put)
 
-    def update_article_translation(self):
-        pass
+    def update_article_translation(self, article_id, translation):
+        locale = translation['locale']
+        url = self.url_for('articles/{}/translations/{}.json'.format(article_id, locale))
+        LOG.debug('updating article translation at {}', url)
+        return self._create_translation(url, translation, requests.put)
+
+    def _missing_locales(self, url):
+        response = requests.get(url, auth=(self.options['user'], self.options['password']),
+                                headers={'Content-type': 'application/json'})
+        response_data = response.json()
+        return response_data['locales']
+
+    def missing_category_locales(self, category_id):
+        url = self.url_for('categories/{}/translations/missing.json'.format(category_id))
+        return self._missing_locales(url)
+
+    def missing_section_locales(self, section_id):
+        url = self.url_for('sections/{}/translations/missing.json'.format(section_id))
+        return self._missing_locales(url)
+
+    def missing_article_locales(self, article_id):
+        url = self.url_for('articles/{}/translations/missing.json'.format(article_id))
+        return self._missing_locales(url)
 
 
 class WebTranslateItClient(object):
@@ -288,13 +348,13 @@ class ExportTask(object):
             if group_id:
                 LOG.info('exporting group {} from {}', group_id, root)
                 if self.meta.is_category(root):
-                    self.zendesk.create_category_translation(group_id, group_translations)
+                    self.zendesk.translate_category(group_id, group_translations)
                 else:
-                    self.zendesk.create_section_translation(group_id, group_translations)
+                    self.zendesk.translate_section(group_id, group_translations)
             articles = self._translated_articles(root, files)
             for article_id, article_translations in articles.items():
                 LOG.info('exporting article {} from {}', article_id, root)
-                self.zendesk.create_article_translation(article_id, article_translations)
+                self.zendesk.translate_article(article_id, article_translations)
 
     def _translated_group(self, path, files):
         result = []
