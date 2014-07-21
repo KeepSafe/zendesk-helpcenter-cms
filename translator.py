@@ -67,7 +67,7 @@ class MetaRepository(object):
             json.dump(group, file, indent=4, sort_keys=True)
 
     def save_article(self, article, path):
-        meta_path = os.path.join(path, article['name']) + MetaRepository.META_EXTENSION
+        meta_path = os.path.join(path, article['name'] + MetaRepository.META_EXTENSION)
         with open(meta_path, 'w') as file:
             LOG.info('saving article meta info {} to path {}', article['name'], meta_path)
             json.dump(article, file, indent=4, sort_keys=True)
@@ -132,6 +132,7 @@ class ContentRepository(object):
         master_name, master_ext = os.path.splitext(ContentRepository.CONTENT_FILENAME)
         for file in files:
             if file == ContentRepository.CONTENT_FILENAME:
+                # TODO make default external and configurable
                 result['en-us'] = file
             else:
                 name, ext = os.path.splitext(file)
@@ -171,113 +172,66 @@ class ZendeskClient(object):
     def url_for(self, path):
         return ZendeskClient.DEFAULT_URL.format(self.options['company_name'], path)
 
+    def _fetch(self, url):
+        response = requests.get(url)
+        return response.json()
+
     def fetch_categories(self):
         url = self.url_for('categories.json')
         LOG.debug('fetching categories from {}', url)
-        response = requests.get(url)
-        response_data = response.json()
-        return response_data['categories'] if response_data else []
+        return self._fetch['categories']
 
     def fetch_sections(self, category_id):
         url = self.url_for('categories/{}/sections.json'.format(category_id))
         LOG.debug('fetching sections from {}', url)
-        response = requests.get(url)
-        response_data = response.json()
-        return response_data['sections'] if response_data else []
+        return self._fetch['sections']
 
     def fetch_articles(self, section_id):
         url = self.url_for('sections/{}/articles.json'.format(section_id))
         LOG.debug('fetching articles from {}', url)
-        response = requests.get(url)
-        response_data = response.json()
-        return response_data['articles'] if response_data else []
+        return self._fetch['articles']
 
-    def _create_translation(self, url, translation_data, request_fn):
+    def translate_category(self, category_id, translations):
+        url = 'categories/{}/translations{}.json'
+        missing_url = self.url_for('categories/{}/translations/missing.json'.format(category_id))
+        return self._translate(url, missing_url, category_id, translations)
+
+    def translate_section(self, section_id, translations):
+        url = 'sections/{}/translations{}.json'
+        missing_url = self.url_for('sections/{}/translations/missing.json'.format(section_id))
+        return self._translate(url, missing_url, section_id, translations)
+
+    def translate_article(self, article_id, translations):
+        url = 'articles/{}/translations{}.json'
+        missing_url = self.url_for('articles/{}/translations/missing.json'.format(article_id))
+        return self._translate(url, missing_url, article_id, translations)
+
+    def _translate(self, url, missing_url, item_id, translations):
+        missing_locales = self._missing_locales(missing_url)
+        LOG.debug('missing locales for {} are {}', item_id, missing_locales)
+        for translation in translations:
+            locale = translation['locale']
+            if locale in missing_locales:
+                create_url = self.url_for(url.format(item_id, ''))
+                LOG.debug('creating translation at {}', create_url)
+                self._send_translate_request(create_url, {'translation': translation}, requests.post)
+            else:
+                update_url = self.url_for(url.format(item_id, '/' + locale))
+                LOG.debug('creating translation at {}', update_url)
+                self._send_translate_request(update_url, translation, requests.put)
+
+    def _send_translate_request(self, url, translation_data, request_fn):
         response = request_fn(url, data=json.dumps(translation_data),
                               auth=(self.options['user'], self.options['password']),
                               headers={'Content-type': 'application/json'})
-        print(response.text)
         response_data = response.json()
         return response_data['translation']
-
-    def translate_category(self, category_id, translations):
-        missing_locales = self.missing_category_locales(category_id)
-        LOG.debug('missing locales for category {} are {}', category_id, missing_locales)
-        for translation in translations:
-            if translation['locale'] in missing_locales:
-                self.create_category_translation(category_id, translation)
-            else:
-                self.update_category_translation(category_id, translation)
-
-    def translate_section(self, section_id, translations):
-        missing_locales = self.missing_section_locales(section_id)
-        LOG.debug('missing locales for section {} are {}', section_id, missing_locales)
-        for translation in translations:
-            if translation['locale'] in missing_locales:
-                self.create_section_translation(section_id, translation)
-            else:
-                self.update_section_translation(section_id, translation)
-
-    def translate_article(self, article_id, translations):
-        missing_locales = self.missing_article_locales(article_id)
-        LOG.debug('missing locales for article {} are {}', article_id, missing_locales)
-        for translation in translations:
-            if translation['locale'] in missing_locales:
-                self.create_article_translation(article_id, translation)
-            else:
-                self.update_article_translation(article_id, translation)
-
-    def create_category_translation(self, category_id, translation):
-        url = self.url_for('categories/{}/translations.json'.format(category_id))
-        LOG.debug('creating category translation at {}', url)
-        return self._create_translation(url, {'translation': translation}, requests.post)
-
-    def create_section_translation(self, section_id, translation):
-        url = self.url_for('sections/{}/translations.json'.format(section_id))
-        LOG.debug('creating section translations at {}', url)
-        return self._create_translation(url, {'translation': translation}, requests.post)
-
-    def create_article_translation(self, article_id, translation):
-        url = self.url_for('articles/{}/translations.json'.format(article_id))
-        LOG.debug('creating article translations at {}', url)
-        return self._create_translation(url, {'translation': translation}, requests.post)
-
-    def update_category_translation(self, category_id, translation):
-        locale = translation['locale']
-        url = self.url_for('categories/{}/translations/{}.json'.format(category_id, locale))
-        del translation['locale']
-        LOG.debug('updating category translation at {}', url)
-        return self._create_translation(url, translation, requests.put)
-
-    def update_section_translation(self, section_id, translation):
-        locale = translation['locale']
-        url = self.url_for('sections/{}/translations/{}.json'.format(section_id, locale))
-        LOG.debug('updating section translation at {}', url)
-        return self._create_translation(url, translation, requests.put)
-
-    def update_article_translation(self, article_id, translation):
-        locale = translation['locale']
-        url = self.url_for('articles/{}/translations/{}.json'.format(article_id, locale))
-        LOG.debug('updating article translation at {}', url)
-        return self._create_translation(url, translation, requests.put)
 
     def _missing_locales(self, url):
         response = requests.get(url, auth=(self.options['user'], self.options['password']),
                                 headers={'Content-type': 'application/json'})
         response_data = response.json()
         return response_data['locales']
-
-    def missing_category_locales(self, category_id):
-        url = self.url_for('categories/{}/translations/missing.json'.format(category_id))
-        return self._missing_locales(url)
-
-    def missing_section_locales(self, section_id):
-        url = self.url_for('sections/{}/translations/missing.json'.format(section_id))
-        return self._missing_locales(url)
-
-    def missing_article_locales(self, article_id):
-        url = self.url_for('articles/{}/translations/missing.json'.format(article_id))
-        return self._missing_locales(url)
 
 
 class WebTranslateItClient(object):
