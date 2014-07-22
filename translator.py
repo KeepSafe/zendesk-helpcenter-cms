@@ -17,18 +17,10 @@ import unicodedata
 import shutil
 
 
-def slugify(value):
-    """
-    Converts to lowercase, removes non-word characters (alphanumerics and underscores) and converts spaces to
-    hyphens. Also strips leading and trailing whitespace.
-    """
-    value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
-    value = re.sub('[^\w\s-]', '', value).strip().lower()
-    return re.sub('[-\s]+', '-', value)
-
-
 class Logger(object):
-
+    """
+    Logs messages to stdout. Has 2 levels, info and debug, with debug only being used if verbose id True.
+    """
     def __init__(self, verbose=False):
         super().__init__()
         self.verbose = verbose
@@ -45,6 +37,11 @@ LOG = Logger()
 
 
 class MetaRepository(object):
+
+    """
+    Handles all meta content, meaning the content coming from Zendesk. Normally just dumps json from Zendesk to a file
+    and reads whatever is needed from there. Also has some utility methods which requite meta info.
+    """
     # TODO possible name conflicts with articles
     META_GROUP_FILENAME = '__group__.meta'
     META_EXTENSION = '.meta'
@@ -91,10 +88,6 @@ class MetaRepository(object):
         data = self._read_group(path)
         return 'category_id' not in data
 
-    def get_articles(self, files):
-        return [article for article in files if
-                article.endswith(MetaRepository.META_EXTENSION) and article != MetaRepository.META_GROUP_FILENAME]
-
     def delete_article(self, article_dir, article_name):
         path = os.path.join(article_dir, article_name + MetaRepository.META_EXTENSION)
         LOG.debug('removing file {}', path)
@@ -102,6 +95,11 @@ class MetaRepository(object):
 
 
 class ContentRepository(object):
+
+    """
+    Handles all content, meaning the stuff that is used to create categories and articles. Categories and sections use
+    special file to hold name and description.
+    """
     CONTENT_FILENAME = '__group__.json'
     CONTENT_EXTENSION = '.md'
 
@@ -185,6 +183,10 @@ class ContentRepository(object):
 
 
 class ZendeskClient(object):
+
+    """
+    Handles all requests to Zendesk
+    """
     DEFAULT_URL = 'https://{}.zendesk.com/hc/api/v2/{}'
 
     def __init__(self, options):
@@ -310,6 +312,10 @@ class ZendeskClient(object):
 
 
 class WebTranslateItClient(object):
+
+    """
+    Handles all reuests to WebTranslateIt
+    """
     DEFAULT_URL = 'https://webtranslateit.com/api/projects/{}/{}'
     API_KEY = 'pDLsTA3XPlO0rfRbTFroAw'
 
@@ -325,6 +331,11 @@ class WebTranslateItClient(object):
 
 
 class ImportTask(object):
+
+    """
+    Imports an existing content from Zendesk. This should only be used to initialize the project. Later on edits
+    should be done directly on the files.
+    """
 
     def __init__(self, options):
         super().__init__()
@@ -362,6 +373,11 @@ class ImportTask(object):
 
 
 class ExportTask(object):
+
+    """
+    Exports content to Zendesk. It will update everything, creating whats missing along the way. Every time this task
+    is used the ENTIRE content is uploaded.
+    """
 
     def __init__(self, options):
         super().__init__()
@@ -448,6 +464,11 @@ class ExportTask(object):
 
 
 class TranslateTask(object):
+
+    """
+    Upload content to WebTranslateIt. Should only be used to upload the initial conent in the default language after
+    it has been imported from Zendesk.
+    """
     TRANSLATE_EXTENSIONS = ['.md']
 
     def __init__(self, options):
@@ -471,6 +492,10 @@ class TranslateTask(object):
 
 
 class RemoveTask(object):
+
+    """
+    Removes articles, sections and categories.
+    """
 
     def __init__(self, options):
         super().__init__()
