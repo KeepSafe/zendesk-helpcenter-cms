@@ -15,12 +15,15 @@ import markdown
 import requests
 import unicodedata
 import shutil
+import configparser
 
 
 class Logger(object):
+
     """
     Logs messages to stdout. Has 2 levels, info and debug, with debug only being used if verbose id True.
     """
+
     def __init__(self, verbose=False):
         super().__init__()
         self.verbose = verbose
@@ -317,10 +320,12 @@ class WebTranslateItClient(object):
     Handles all reuests to WebTranslateIt
     """
     DEFAULT_URL = 'https://webtranslateit.com/api/projects/{}/{}'
-    API_KEY = 'pDLsTA3XPlO0rfRbTFroAw'
+
+    def __init__(self, options):
+        self.api_key = options['webtranslateit_api_key']
 
     def url_for(self, path):
-        return WebTranslateItClient.DEFAULT_URL.format(WebTranslateItClient.API_KEY, path)
+        return WebTranslateItClient.DEFAULT_URL.format(self.api_key, path)
 
     def create_file(self, filepath):
         with open(filepath, 'r') as file:
@@ -559,11 +564,15 @@ def parse_args():
 
 
 def parse_options():
+    config = configparser.ConfigParser()
+    config.read('translator.cfg')
+
     return {
-        'root_folder': 'help_center_content',
-        'company_name': 'testingzendesk12',
-        'user': 'zendesk@maildrop.cc',
-        'password': '123zendesk'
+        'root_folder': config['default']['root_folder'],
+        'company_name': config['default']['company_name'],
+        'user': config['default']['user'],
+        'password': config['default']['password'],
+        'webtranslateit_api_key': config['default']['webtranslateit_api_key']
     }
 
 
