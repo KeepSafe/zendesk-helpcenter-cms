@@ -14,9 +14,7 @@ import html2text
 import markdown
 import requests
 import unicodedata
-
-
-from os.path import isfile
+import shutil
 
 
 def slugify(value):
@@ -97,6 +95,11 @@ class MetaRepository(object):
         return [article for article in files if
                 article.endswith(MetaRepository.META_EXTENSION) and article != MetaRepository.META_GROUP_FILENAME]
 
+    def delete_article(self, article_dir, article_name):
+        path = os.path.join(article_dir, article_name + MetaRepository.META_EXTENSION)
+        LOG.debug('removing file {}', path)
+        os.remove(path)
+
 
 class ContentRepository(object):
     CONTENT_FILENAME = '__group__.json'
@@ -166,6 +169,19 @@ class ContentRepository(object):
                         translated_articles[locale] = article
             result[article_name] = translated_articles
         return result
+
+    def delete_article(self, article_dir, article_name):
+        files = [f for f in os.listdir(article_dir)]
+        files = map(lambda f: f.split('.'), files)
+        files = filter(lambda f: f[0] == article_name, files)
+        files = map(lambda f: '.'.join(f), files)
+        for article in files:
+            path = os.path.join(article_dir, article)
+            LOG.debug('removeing file {}', path)
+            os.remove(path)
+
+    def delete_group(self, path):
+        shutil.rmtree(path)
 
 
 class ZendeskClient(object):
@@ -274,6 +290,24 @@ class ZendeskClient(object):
         }
         return self._create(url, data)['article']
 
+    def delete_article(self, article_id):
+        url = self.url_for('articles/{}.json'.format(article_id))
+        LOG.debug('deleting article from {}', url)
+        response = requests.delete(url, auth=(self.options['user'], self.options['password']))
+        return response.status_code == 200
+
+    def delete_section(self, section_id):
+        url = self.url_for('sections/{}.json'.format(section_id))
+        LOG.debug('deleting section from {}', url)
+        response = requests.delete(url, auth=(self.options['user'], self.options['password']))
+        return response.status_code == 200
+
+    def delete_category(self, category_id):
+        url = self.url_for('categories/{}.json'.format(category_id))
+        LOG.debug('deleting category from {}', url)
+        response = requests.delete(url, auth=(self.options['user'], self.options['password']))
+        return response.status_code == 200
+
 
 class WebTranslateItClient(object):
     DEFAULT_URL = 'https://webtranslateit.com/api/projects/{}/{}'
@@ -339,7 +373,8 @@ class ExportTask(object):
     def execute(self):
         LOG.info('executing export task...')
         root = self.options['root_folder']
-        category_paths = [os.path.join(root, name) for name in os.listdir(root) if not isfile(os.path.join(root, name))]
+        category_paths = [os.path.join(root, name) for name in os.listdir(root)
+                          if not os.path.isfile(os.path.join(root, name))]
         for category_path in category_paths:
             category_id, category_translations = self._translated_group(category_path)
             if category_id:
@@ -352,7 +387,7 @@ class ExportTask(object):
                 category_id = new_category['id']
 
             section_paths = [os.path.join(category_path, name) for name in os.listdir(category_path)
-                             if not isfile(os.path.join(category_path, name))]
+                             if not os.path.isfile(os.path.join(category_path, name))]
             for section_path in section_paths:
                 section_id, section_translations = self._translated_group(section_path)
                 if section_id:
@@ -369,6 +404,7 @@ class ExportTask(object):
                         LOG.info('exporting article {} from {}', article_id, section_path)
                         self.zendesk.update_article(article_id, article_translations)
                     else:
+                        # TODO add real article name
                         LOG.info('exporting new article from {}', section_path)
                         new_article = self.zendesk.create_article(section_id, article_translations)
                         self.meta.save_article(new_article, section_path)
@@ -434,18 +470,50 @@ class TranslateTask(object):
                 self.translate.create_file(os.path.join(root, file))
 
 
-class AddTask(object):
-    pass
-
-
 class RemoveTask(object):
-    pass
+
+    def __init__(self, options):
+        super().__init__()
+        self.options = options
+        self.zendesk = ZendeskClient(options)
+        self.meta = MetaRepository()
+        self.repo = ContentRepository()
+
+    def execute(self):
+        LOG.info('executing delete task...')
+        path = self.options['path']
+        if not os.path.exists(path):
+            raise ValueError('Path to be deleted must exists, but {} doesn\'t'.format(path))
+
+        if os.path.isfile(path):
+            self._delete_article(path)
+        else:
+            self._delete_group(path)
+
+    def _delete_group(self, path):
+        group_id = self.meta.group_id(path)
+        LOG.info('deleting group {} from {}', group_id, path)
+        if self.meta.is_category(path):
+            self.zendesk.delete_category(group_id)
+        else:
+            self.zendesk.delete_section(group_id)
+        self.repo.delete_group(path)
+
+    def _delete_article(self, path):
+        article_name, _ = os.path.splitext(os.path.basename(path))
+        article_dir = os.path.dirname(path)
+        article_id = self.meta.article_id(article_dir, article_name)
+        LOG.info('deleting article {} from {}', article_name, path)
+        self.zendesk.delete_article(article_id)
+        self.meta.delete_article(article_dir, article_name)
+        self.repo.delete_article(article_dir, article_name)
 
 
 tasks = {
     'import': ImportTask,
     'export': ExportTask,
-    'translate': TranslateTask
+    'translate': TranslateTask,
+    'remove': RemoveTask
 }
 
 
@@ -454,11 +522,9 @@ def parse_args():
     parser.add_argument('task',
                         help='Task to be performed.',
                         choices=tasks.keys())
-    parser.add_argument('-f', '--force',
-                        help='Ignore warnings and override existing files.',
-                        action='store_true')
     parser.add_argument('-v', '--verbose', help='Increase output verbosity',
                         action='store_true')
+    parser.add_argument('-p', '--path', help='Set path for the remove task')
     parser.add_argument('-r', '--root',
                         help='Article\'s root folder',
                         default='help_center_content')
@@ -477,6 +543,9 @@ def parse_options():
 def resolve_args(args, options):
     task = tasks[args.task](options)
     LOG.verbose = args.verbose
+
+    options['path'] = args.path
+    options['root'] = args.root
 
     return task, options
 
