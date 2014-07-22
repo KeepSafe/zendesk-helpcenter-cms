@@ -488,7 +488,9 @@ class TranslateTask(object):
         for root, _, files in os.walk(self.options['root_folder']):
             files = filter(self.is_file_to_translate, files)
             for file in files:
-                self.translate.create_file(os.path.join(root, file))
+                filepath = os.path.join(root, file)
+                LOG.info('uploading {}', filepath)
+                self.translate.create_file(filepath)
 
 
 class RemoveTask(object):
