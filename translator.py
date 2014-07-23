@@ -479,7 +479,7 @@ class TranslateTask(object):
     def __init__(self, options):
         super().__init__()
         self.options = options
-        self.translate = WebTranslateItClient()
+        self.translate = WebTranslateItClient(options)
         self.meta = MetaRepository()
         self.repo = ContentRepository()
 
