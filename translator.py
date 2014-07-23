@@ -9,11 +9,9 @@
 import argparse
 import json
 import os
-import re
 import html2text
 import markdown
 import requests
-import unicodedata
 import shutil
 import configparser
 
@@ -33,7 +31,8 @@ class Logger(object):
             print(message.format(*args))
 
     def info(self, message, *args):
-        print(message.format(*args))
+        #print(message.format(*args))
+        pass
 
 
 LOG = Logger()
@@ -201,6 +200,9 @@ class ZendeskClient(object):
 
     def _fetch(self, url):
         response = requests.get(url)
+        if response.status_code != 200:
+            raise Exception('there was a problem fetching data from {}. status was {} and message {}', url,
+                            response.status_code, response.text)
         return response.json()
 
     def fetch_categories(self):
@@ -251,18 +253,27 @@ class ZendeskClient(object):
         response = request_fn(url, data=json.dumps(translation_data),
                               auth=(self.options['user'], self.options['password']),
                               headers={'Content-type': 'application/json'})
+        if response.status_code not in [200, 201]:
+            raise Exception('there was a problem uploading translations at {}. status was {} and message {}', url,
+                            response.status_code, response.text)
         response_data = response.json()
         return response_data['translation']
 
     def _missing_locales(self, url):
         response = requests.get(url, auth=(self.options['user'], self.options['password']),
                                 headers={'Content-type': 'application/json'})
+        if response.status_code != 200:
+            raise Exception('there was a problem fetching missng locales from {}. status was {} and message {}', url,
+                            response.status_code, response.text)
         response_data = response.json()
         return response_data['locales']
 
     def _create(self, url, data):
         response = requests.post(url, data=json.dumps(data), auth=(self.options['user'], self.options['password']),
                                  headers={'Content-type': 'application/json'})
+        if response.status_code != 201:
+            raise Exception('there was a problem creating an item at {}. status was {} and message {}', url,
+                            response.status_code, response.text)
         return response.json()
 
     def create_category(self, translations):
@@ -299,18 +310,24 @@ class ZendeskClient(object):
         url = self.url_for('articles/{}.json'.format(article_id))
         LOG.debug('deleting article from {}', url)
         response = requests.delete(url, auth=(self.options['user'], self.options['password']))
+        print(url)
+        print(response.status_code)
         return response.status_code == 200
 
     def delete_section(self, section_id):
         url = self.url_for('sections/{}.json'.format(section_id))
         LOG.debug('deleting section from {}', url)
         response = requests.delete(url, auth=(self.options['user'], self.options['password']))
+        print(url)
+        print(response.status_code)
         return response.status_code == 200
 
     def delete_category(self, category_id):
         url = self.url_for('categories/{}.json'.format(category_id))
         LOG.debug('deleting category from {}', url)
         response = requests.delete(url, auth=(self.options['user'], self.options['password']))
+        print(url)
+        print(response.status_code)
         return response.status_code == 200
 
 
@@ -333,6 +350,8 @@ class WebTranslateItClient(object):
             # TODO handle response
             response = requests.post(self.url_for('files'), data={'file': linux_filepath, 'name': linux_filepath},
                                      files={'file': file})
+            print(self.url_for('files'))
+            print(response.status_code)
 
 
 class ImportTask(object):
