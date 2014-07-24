@@ -31,7 +31,7 @@ class Logger(object):
             print(message.format(*args))
 
     def info(self, message, *args):
-        #print(message.format(*args))
+        print(message.format(*args))
         pass
 
 
@@ -120,17 +120,19 @@ class ContentRepository(object):
             'description': group['description']
         }
         content_path = os.path.join(group_path, ContentRepository.CONTENT_FILENAME)
-        with open(content_path, 'w') as file:
-            LOG.info('saving group content {} to path {}', group['name'], content_path)
-            json.dump(group_content, file, indent=4, sort_keys=True)
+        if not os.path.exists(content_path):
+            with open(content_path, 'w') as file:
+                LOG.info('saving group content {} to path {}', group['name'], content_path)
+                json.dump(group_content, file, indent=4, sort_keys=True)
         return group_path
 
     def save_article(self, article, group_path):
         filename = os.path.join(group_path, article['name'] + ContentRepository.CONTENT_EXTENSION)
-        with open(filename, 'w') as file:
-            LOG.info('saving article content {} to path {}', article['name'], filename)
-            file_content = html2text.html2text(article['body'])
-            file.write(file_content)
+        if not os.path.exists(filename):
+            with open(filename, 'w') as file:
+                LOG.info('saving article content {} to path {}', article['name'], filename)
+                file_content = html2text.html2text(article['body'])
+                file.write(file_content)
         return filename
 
     def get_translated_group(self, files):
@@ -560,11 +562,36 @@ class RemoveTask(object):
         self.repo.delete_article(article_dir, article_name)
 
 
+class AddTask(object):
+
+    """
+    Creates default files when adding new article in a new category/section
+    """
+
+    def __init__(self, options):
+        super().__init__()
+        self.options = options
+        self.repo = ContentRepository()
+
+    def execute(self):
+        path = self.options['path']
+        article_path = os.path.dirname(path)
+        article_name, _ = os.path.splitext(os.path.basename(path))
+        section_path = os.path.dirname(article_path)
+        section_name = os.path.basename(article_path)
+        category_path = os.path.dirname(section_path)
+        category_name = os.path.basename(section_path)
+        self.repo.save_group({'name': category_name, 'description': ''}, category_path)
+        self.repo.save_group({'name': section_name, 'description': ''}, section_path)
+        self.repo.save_article({'name': article_name, 'body': ''}, article_path)
+
+
 tasks = {
     'import': ImportTask,
     'export': ExportTask,
     'translate': TranslateTask,
-    'remove': RemoveTask
+    'remove': RemoveTask,
+    'add': AddTask
 }
 
 
@@ -575,7 +602,7 @@ def parse_args():
                         choices=tasks.keys())
     parser.add_argument('-v', '--verbose', help='Increase output verbosity',
                         action='store_true')
-    parser.add_argument('-p', '--path', help='Set path for the remove task')
+    parser.add_argument('-p', '--path', help='Set path for adding/removing an item')
     parser.add_argument('-r', '--root',
                         help='Article\'s root folder',
                         default='help_center_content')

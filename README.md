@@ -103,19 +103,8 @@ Once an article is in Zendesk it will also have a meta file. This file stores in
 
 ## Creating new items
 
-### Creating new category/section
-
-To create a new category or section, simply create a folder. Inside the folder create a file called `__group__.json` with contents:
-
 ```
-{
-    "description": "...",
-    "name": "..."
-}
+python translator.py add -p "path/to/article.md"
 ```
 
-To upload the content for translation use `wti` command line tool. Once translated download the translations with `wti` and run `python translator.py export` to upload the content to Zendesk.
-
-### Creating a new article
-
-The process is similar to creating new category/section. In the section you want to create a new article, create a new markdown file. Upload the file for translations with `wti`. Once translated download translations with `wti pull` and upload to the help centre with `python translator.py export`.
+It will **only** create any missing files. It won't upload the content anywhere. If you want to upload the content to Zendesk use `export` task. If you want to upload the content to WebTranslateIt use `wti`
