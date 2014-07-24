@@ -108,3 +108,11 @@ python translator.py add -p "path/to/article.md"
 ```
 
 It will **only** create any missing files. It won't upload the content anywhere. If you want to upload the content to Zendesk use `export` task. If you want to upload the content to WebTranslateIt use `wti`
+
+## Removing items
+
+```
+python translator.py remove -p "path/to/article.md"
+```
+
+It will remove files locally and from Zendesk and WebTranslateIt. It will not remove categories/sections even if empty, it has to be done manually.

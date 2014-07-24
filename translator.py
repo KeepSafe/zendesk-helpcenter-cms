@@ -102,15 +102,16 @@ class ContentRepository(object):
     Handles all content, meaning the stuff that is used to create categories and articles. Categories and sections use
     special file to hold name and description.
     """
-    CONTENT_FILENAME = '__group__.json'
-    CONTENT_EXTENSION = '.md'
+    CONTENT_GROUP_FILENAME = '__group__.json'
+    CONTENT_BODY_EXTENSION = '.md'
+    CONTENT_NAME_EXTENSION = '.json'
 
     def __init__(self):
         super().__init__()
         self.meta = MetaRepository()
 
     def is_content(self, name):
-        return name == ContentRepository.CONTENT_FILENAME
+        return name.endswith(ContentRepository.CONTENT_NAME_EXTENSION) or name == ContentRepository.CONTENT_GROUP_FILENAME
 
     def save_group(self, group, path):
         group_path = os.path.join(path, group['name'])
@@ -119,7 +120,7 @@ class ContentRepository(object):
             'name': group['name'],
             'description': group['description']
         }
-        content_path = os.path.join(group_path, ContentRepository.CONTENT_FILENAME)
+        content_path = os.path.join(group_path, ContentRepository.CONTENT_GROUP_FILENAME)
         if not os.path.exists(content_path):
             with open(content_path, 'w') as file:
                 LOG.info('saving group content {} to path {}', group['name'], content_path)
@@ -127,19 +128,24 @@ class ContentRepository(object):
         return group_path
 
     def save_article(self, article, group_path):
-        filename = os.path.join(group_path, article['name'] + ContentRepository.CONTENT_EXTENSION)
+        filename = os.path.join(group_path, article['name'] + ContentRepository.CONTENT_BODY_EXTENSION)
         if not os.path.exists(filename):
             with open(filename, 'w') as file:
                 LOG.info('saving article content {} to path {}', article['name'], filename)
                 file_content = html2text.html2text(article['body'])
                 file.write(file_content)
+        filename = os.path.join(group_path, article['name'] + ContentRepository.CONTENT_NAME_EXTENSION)
+        if not os.path.exists(filename):
+            with open(filename, 'w') as file:
+                LOG.info('saving article name {} to path {}', article['name'], filename)
+                json.dump({'name': article['name']}, file, indent=4, sort_keys=True)
         return filename
 
     def get_translated_group(self, files):
         result = {}
-        master_name, master_ext = os.path.splitext(ContentRepository.CONTENT_FILENAME)
+        master_name, master_ext = os.path.splitext(ContentRepository.CONTENT_GROUP_FILENAME)
         for file in files:
-            if file == ContentRepository.CONTENT_FILENAME:
+            if file == ContentRepository.CONTENT_GROUP_FILENAME:
                 # TODO make default external and configurable
                 result['en-us'] = file
             else:
@@ -152,7 +158,7 @@ class ContentRepository(object):
 
     def get_translated_articles(self, files):
         result = {}
-        article_names = filter(lambda a: a.endswith(ContentRepository.CONTENT_EXTENSION), files)
+        article_names = filter(lambda a: a.endswith(ContentRepository.CONTENT_BODY_EXTENSION), files)
         article_names_bits = map(lambda a: a.split('.'), article_names)
         article_names_bits = filter(lambda a: len(a) == 2, article_names_bits)
         article_names = map(lambda a: a[0], article_names_bits)
@@ -160,13 +166,13 @@ class ContentRepository(object):
         for article_name in article_names:
             translated_articles = {}
             articles = [article for article in files if
-                        article.startswith(article_name) and article.endswith(ContentRepository.CONTENT_EXTENSION)]
+                        article.startswith(article_name) and article.endswith(ContentRepository.CONTENT_BODY_EXTENSION)]
             for article in articles:
-                if article == article_name + ContentRepository.CONTENT_EXTENSION:
+                if article == article_name + ContentRepository.CONTENT_BODY_EXTENSION:
                     translated_articles['en-us'] = article
                 else:
                     name, ext = os.path.splitext(article)
-                    if name.startswith(article_name + '.') and ext == ContentRepository.CONTENT_EXTENSION:
+                    if name.startswith(article_name + '.') and ext == ContentRepository.CONTENT_BODY_EXTENSION:
                         locale = name.split('.')[-1]
                         translated_articles[locale] = article
             result[article_name] = translated_articles
@@ -184,6 +190,12 @@ class ContentRepository(object):
 
     def delete_group(self, path):
         shutil.rmtree(path)
+
+    def article_translated_name(self, path, filename):
+        name, _ = os.path.splitext(filename)
+        with open(os.path.join(path, name + ContentRepository.CONTENT_NAME_EXTENSION)) as file:
+            file_data = json.load(file)
+            return file_data['name']
 
 
 class ZendeskClient(object):
@@ -355,6 +367,9 @@ class WebTranslateItClient(object):
             print(self.url_for('files'))
             print(response.status_code)
 
+    def delete_file(self, filepath):
+        pass
+
 
 class ImportTask(object):
 
@@ -475,10 +490,11 @@ class ExportTask(object):
         for article_name, article_details in articles.items():
             article_id = self.meta.article_id(path, article_name)
             for locale, article_filename in article_details.items():
+                article_translated_name = self.repo.article_translated_name(path, article_filename)
                 with open(os.path.join(path, article_filename), 'r') as file:
                     article_body = file.read()
                     translation = {
-                        'title': article_name,
+                        'title': article_translated_name,
                         'body': markdown.markdown(article_body),
                         'locale': locale
                     }
@@ -529,6 +545,7 @@ class RemoveTask(object):
         super().__init__()
         self.options = options
         self.zendesk = ZendeskClient(options)
+        self.translate = WebTranslateItClient(options)
         self.meta = MetaRepository()
         self.repo = ContentRepository()
 
@@ -550,6 +567,7 @@ class RemoveTask(object):
             self.zendesk.delete_category(group_id)
         else:
             self.zendesk.delete_section(group_id)
+        self.translate.delete_file(path)
         self.repo.delete_group(path)
 
     def _delete_article(self, path):
@@ -558,6 +576,7 @@ class RemoveTask(object):
         article_id = self.meta.article_id(article_dir, article_name)
         LOG.info('deleting article {} from {}', article_name, path)
         self.zendesk.delete_article(article_id)
+        self.translate.delete_file(path)
         self.meta.delete_article(article_dir, article_name)
         self.repo.delete_article(article_dir, article_name)
 
