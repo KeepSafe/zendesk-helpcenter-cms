@@ -16,6 +16,12 @@ Python script for zendesk helpcenter translations.
 2. `source env/bin/activate`
 3. `pip install -r requirements.txt`
 
+## Configuration
+
+    cp translator.default translator.config
+    
+Copy the default config file with the command above to the `translator.config`, open it and enter you credentials.
+
 ## Usage
 
 ### Initial setup
