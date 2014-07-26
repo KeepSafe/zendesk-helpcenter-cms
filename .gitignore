@@ -8,3 +8,5 @@ env/
 
 *.sublime-project
 *.sublime-workspace
+
+translator.config
