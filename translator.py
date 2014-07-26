@@ -630,7 +630,7 @@ def parse_args():
 
 def parse_options():
     config = configparser.ConfigParser()
-    config.read('translator.cfg')
+    config.read('translator.config')
 
     return {
         'root_folder': config['default']['root_folder'],
