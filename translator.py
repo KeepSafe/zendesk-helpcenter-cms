@@ -364,11 +364,6 @@ class WebTranslateItClient(object):
             # TODO handle response
             response = requests.post(self.url_for('files'), data={'file': linux_filepath, 'name': linux_filepath},
                                      files={'file': file})
-            print(self.url_for('files'))
-            print(response.status_code)
-
-    def delete_file(self, filepath):
-        pass
 
 
 class ImportTask(object):
