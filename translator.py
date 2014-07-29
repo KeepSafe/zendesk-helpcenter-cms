@@ -45,11 +45,14 @@ class MetaRepository(object):
     and reads whatever is needed from there. Also has some utility methods which requite meta info.
     """
     # TODO possible name conflicts with articles
-    META_GROUP_FILENAME = '__group__.meta'
-    META_EXTENSION = '.meta'
+    META_GROUP_FILENAME = '.group.meta'
+    META_ARTICLE_FILENAME = '.{}.meta'
 
     def _group_filepath(self, path):
         return os.path.join(path, MetaRepository.META_GROUP_FILENAME)
+
+    def _article_filepath(self, path, article_name):
+        return os.path.join(path, MetaRepository.META_ARTICLE_FILENAME.format(article_name))
 
     def _read_group(self, path):
         filepath = self._group_filepath(path)
@@ -67,7 +70,7 @@ class MetaRepository(object):
             json.dump(group, file, indent=4, sort_keys=True)
 
     def save_article(self, article, path):
-        meta_path = os.path.join(path, article['name'] + MetaRepository.META_EXTENSION)
+        meta_path = self._article_filepath(path, article['name'])
         with open(meta_path, 'w') as file:
             LOG.info('saving article meta info {} to path {}', article['name'], meta_path)
             json.dump(article, file, indent=4, sort_keys=True)
@@ -77,7 +80,7 @@ class MetaRepository(object):
         return data['id'] if data else None
 
     def article_id(self, path, article_name):
-        filepath = os.path.join(path, article_name + MetaRepository.META_EXTENSION)
+        filepath = self._article_filepath(path, article_name)
         if os.path.exists(filepath):
             with open(filepath, 'r') as file:
                 LOG.debug('reading article meta {}', filepath)
@@ -91,7 +94,7 @@ class MetaRepository(object):
         return 'category_id' not in data
 
     def delete_article(self, article_dir, article_name):
-        path = os.path.join(article_dir, article_name + MetaRepository.META_EXTENSION)
+        path = self._article_filepath(article_dir, article_name)
         LOG.debug('removing file {}', path)
         os.remove(path)
 
@@ -600,6 +603,16 @@ class AddTask(object):
         self.repo.save_article({'name': article_name, 'body': ''}, article_path)
 
 
+class MoveTask(object):
+
+    """
+    Move article to a different section/category
+    """
+
+    def execute(self):
+        pass
+
+
 tasks = {
     'import': ImportTask,
     'export': ExportTask,
@@ -610,17 +623,23 @@ tasks = {
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('task',
-                        help='Task to be performed.',
-                        choices=tasks.keys())
-    parser.add_argument('-v', '--verbose', help='Increase output verbosity',
-                        action='store_true')
-    parser.add_argument('-p', '--path', help='Set path for adding/removing an item')
-    parser.add_argument('-r', '--root',
-                        help='Article\'s root folder',
-                        default='help_center_content')
-    return parser.parse_args()
+    task_parser = argparse.ArgumentParser(add_help=False)
+    task_parser.add_argument('task',
+                             help='Task to be performed.',
+                             choices=tasks.keys())
+    task_parser.add_argument('-v', '--verbose', help='Increase output verbosity',
+                             action='store_true')
+    task_parser.add_argument('-r', '--root',
+                             help='Article\'s root folder',
+                             default='help_center_content')
+    subparsers = task_parser.add_subparsers(help='sub-command help')
+
+    task_parsers = {task_parser: subparsers.add_parser(task_parser) for task_parser in tasks}
+
+    task_parsers['remove'].add_argument('-p', '--path', help='Set path for removing an item')
+    task_parsers['add'].add_argument('-p', '--path', help='Set path for removing an item')
+
+    return task_parser.parse_args()
 
 
 def parse_options():
