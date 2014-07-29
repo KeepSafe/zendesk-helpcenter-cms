@@ -16,6 +16,8 @@ Python script for zendesk helpcenter translations.
 2. `source env/bin/activate`
 3. `pip install -r requirements.txt`
 
+**Important:** If you are using OSX make sure the virtuaenv uses python 3. You can force virtualenv to use python 3 by running `virtualenv --python=/opt/local/bin/python3 env` instead of `virtualenv env`
+
 ## Configuration
 
     cp translator.default translator.config
