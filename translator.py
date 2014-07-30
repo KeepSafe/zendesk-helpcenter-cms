@@ -45,22 +45,31 @@ LOG = Logger()
 class Group(object):
 
     def __init__(self, name, path, parent=None):
-        self.meta = MetaRepository()
+        self.meta_repo = MetaRepository()
         self.content = ContentRepository()
         self.name = name
         self.path = path
         self.parent = parent
-        self.children = []
+
+    def _articles(self):
+        filepaths = [filepath for filepath in os.listdir(self.path) if os.path.isfile(os.path.join(self.path, filepath))]
+        article_names = filter(lambda a: a.endswith('.md'), filepaths)
+        article_names_bits = map(lambda a: a.split('.'), article_names)
+        article_names_bits = filter(lambda a: len(a) == 2, article_names_bits)
+        article_names = map(lambda a: a[0], article_names_bits)
+        articles = [Article.from_path(self.path, article_name) for article_name in article_names]
+        print(articles)
+        return articles
+
+    def _subgroups(self):
+        filepaths = [filepath for filepath in os.listdir(self.path) if os.path.isdir(os.path.join(self.path, filepath))]
+        return [Group.from_path(os.path.join(self.path, filepath), self) for filepath in filepaths]
 
     @property
-    def meta_filepath(self):
-        return os.path.join(self.path, '.group.meta')
-
-    @property
-    def meta_data(self):
-        return {
-            'zendesk_id': self.zendesk_id
-        }
+    def meta(self):
+        path = os.path.join(self.path, '.group.meta')
+        data = to_json({'zendesk_id': self.zendesk_id})
+        return [(path, data)]
 
     @property
     def contents(self):
@@ -72,9 +81,16 @@ class Group(object):
             (os.path.join(self.path, '__group__.json'), data)
         ]
 
+    @property
+    def children(self):
+        if self.parent:
+            return self._articles()
+        else:
+            return self._subgroups()
+
     def save(self):
         os.makedirs(self.path, exist_ok=True)
-        self.meta.save(self)
+        self.meta_repo.save(self)
         self.content.save(self)
 
     def delete(self):
@@ -82,6 +98,9 @@ class Group(object):
 
     def move(self):
         pass
+
+    def translate(self):
+        print('translating: ' + self.name)
 
     @staticmethod
     def from_zendesk(parent_path, zendesk_group, parent=None):
@@ -92,11 +111,19 @@ class Group(object):
         group.description = zendesk_group['description']
         return group
 
+    @staticmethod
+    def from_path(path, parent=None):
+        if not os.path.exists(path):
+            raise ValueError('given path {} does not exist'.format(path))
+        if not os.path.isdir(path):
+            raise ValueError('given path {} is not a directory'.format(path))
+        return Group(os.path.basename(path), path, parent)
+
 
 class Article(object):
 
     def __init__(self, name, body, path):
-        self.meta = MetaRepository()
+        self.meta_repo = MetaRepository()
         self.content = ContentRepository()
         self.name = name
         self.body = body
@@ -104,24 +131,18 @@ class Article(object):
         self.translations = {}
 
     @property
-    def meta_filepath(self):
-        return os.path.join(self.path, '.article_{}.meta'.format(self.name))
-
-    @property
-    def meta_data(self):
-        return {
-            'zendesk_id': self.zendesk_id
-        }
+    def meta(self):
+        return [(self.meta_filename(self.path, self.name), to_json({'zendesk_id': self.zendesk_id}))]
 
     @property
     def contents(self):
         return [
-            (os.path.join(self.path, '{}.md'.format(self.name)), self.body),
-            (os.path.join(self.path, '{}.json'.format(self.name)), to_json({'name': self.name}))
+            (self.body_filename(self.path, self.name), self.body),
+            (self.name_filename(self.path, self.name), to_json({'name': self.name}))
         ]
 
     def save(self):
-        self.meta.save(self)
+        self.meta_repo.save(self)
         self.content.save(self)
 
     def delete(self):
@@ -130,6 +151,21 @@ class Article(object):
     def move(self):
         pass
 
+    def translate(self):
+        print('translating: ' + self.name)
+
+    @staticmethod
+    def body_filename(path, name):
+        return os.path.join(path, '{}.md'.format(name))
+
+    @staticmethod
+    def name_filename(path, name):
+        return os.path.join(path, '{}.json'.format(name))
+
+    @staticmethod
+    def meta_filename(path, name):
+        return os.path.join(path, '.article_{}.meta'.format(name))
+
     @staticmethod
     def from_zendesk(section_path, zendesk_article):
         name = zendesk_article['name']
@@ -137,6 +173,16 @@ class Article(object):
         article = Article(name, body, section_path)
         article.zendesk_id = zendesk_article['id']
         return article
+
+    @staticmethod
+    def from_path(path, article_name):
+        article_filepath = Article.body_filename(path, article_name)
+        if not os.path.exists(path):
+            raise ValueError('given path {} does not exist'.format(article_filepath))
+        if not os.path.isdir(path):
+            raise ValueError('given path {} is not a directory'.format(article_filepath))
+        body = ContentRepository().read(article_filepath)
+        return Article(article_name, body, path)
 
 
 class MetaRepository(object):
@@ -150,19 +196,19 @@ class MetaRepository(object):
         filepath = item.meta_filename
         if os.path.exists(filepath):
             with open(filepath, 'r') as file:
-                LOG.debug('reading group meta {}', filepath)
+                LOG.debug('reading meta {}', filepath)
                 return json.load(file)
-        LOG.debug('unable to read group meta {}', filepath)
+        LOG.debug('unable to read meta {}', filepath)
         return None
 
     def save(self, item):
-        filepath = item.meta_filepath
-        if not os.path.exists(filepath):
-            with open(filepath, 'w') as file:
-                LOG.info('saving group meta info {} to path {}', item.name, filepath)
-                json.dump(item.meta_data, file, indent=4, sort_keys=True)
-        else:
-            LOG.info('group meta info {} at path {} already exists, skipping...', item.name, filepath)
+        for filepath, data in item.meta:
+            if not os.path.exists(filepath):
+                with open(filepath, 'w') as file:
+                    LOG.info('saving meta info {} to path {}', item.name, filepath)
+                    json.dump(data, file, indent=4, sort_keys=True)
+            else:
+                LOG.info('meta info {} at path {} already exists, skipping...', item.name, filepath)
 
     def delete(self, item):
         filepath = item.meta_filepath
@@ -181,22 +227,24 @@ class ContentRepository(object):
         super().__init__()
         self.meta = MetaRepository()
 
-    def _save_file(self, path, data):
-        if not os.path.exists(path):
-            with open(path, 'w') as file:
-                file.write(data)
-            return True
-        return False
-
     def is_content(self, name):
         return name.endswith(ContentRepository.CONTENT_NAME_EXTENSION) or name == ContentRepository.CONTENT_GROUP_FILENAME
 
     def save(self, item):
         for filepath, data in item.contents:
-            if self._save_file(filepath, data):
+            if not os.path.exists(filepath):
+                with open(filepath, 'w') as file:
+                    file.write(data)
                 LOG.info('saving content {} to path {}', item.name, filepath)
             else:
                 LOG.info('content {} at path {} already exists, skipping...', item.name, filepath)
+
+    def read(self, item):
+        results = {}
+        for filepath in item.content_filepaths:
+            with open(filepath, 'r') as file:
+                results[filepath] = file.read()
+        return results
 
     def get_translated_group(self, files):
         result = {}
@@ -566,19 +614,18 @@ class TranslateTask(object):
         self.meta = MetaRepository()
         self.repo = ContentRepository()
 
-    def is_file_to_translate(self, path):
-        _, ext = os.path.splitext(path)
-        name = os.path.basename(path)
-        return ext in TranslateTask.TRANSLATE_EXTENSIONS or self.repo.is_content(name)
-
     def execute(self):
         LOG.info('executing translate task...')
-        for root, _, files in os.walk(self.options['root_folder']):
-            files = filter(self.is_file_to_translate, files)
-            for file in files:
-                filepath = os.path.join(root, file)
-                LOG.info('uploading {}', filepath)
-                self.translate.create_file(filepath)
+        root = self.options['root_folder']
+        for filepath in os.listdir(root):
+            category_path = os.path.join(root, filepath)
+            if os.path.isdir(category_path):
+                category = Group.from_path(category_path)
+                category.translate()
+                for section in category.children:
+                    section.translate()
+                    for article in section.children:
+                        article.translate()
 
 
 class RemoveTask(object):
@@ -740,7 +787,6 @@ def resolve_args(args, options):
 
 def main():
     args = parse_args()
-    print(args)
     options = parse_options()
     task, options = resolve_args(args, options)
     task.execute()
