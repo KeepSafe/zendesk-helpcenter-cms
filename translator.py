@@ -609,6 +609,30 @@ class MoveTask(object):
     Move article to a different section/category
     """
 
+    def __init__(self, options):
+        super().__init__()
+        self.options = options
+        self.zendesk = ZendeskClient(options)
+        self.translate = WebTranslateItClient(options)
+        self.meta = MetaRepository()
+        self.repo = ContentRepository()
+
+    def execute(self):
+        source = self.options['source']
+        destination = self.options['destination']
+
+        self.translate.move(source, destination)
+        self.zendesk.move(source, destination)
+        self.meta.move(source, destination)
+        self.repo.move(source, destination)
+
+
+class DoctorTask(object):
+
+    """
+    Verifies if everything is valid and creates missing files.
+    """
+
     def execute(self):
         pass
 
@@ -618,7 +642,9 @@ tasks = {
     'export': ExportTask,
     'translate': TranslateTask,
     'remove': RemoveTask,
-    'add': AddTask
+    'add': AddTask,
+    'move': MoveTask,
+    'doctor': DoctorTask
 }
 
 
