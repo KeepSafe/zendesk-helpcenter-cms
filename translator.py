@@ -685,8 +685,8 @@ def resolve_args(args, options):
     task = tasks[args.task](options)
     LOG.verbose = args.verbose
 
-    options['path'] = args.path
-    options['root'] = args.root
+    for key, value in vars(args).items():
+        options[key] = value
 
     return task, options
 
