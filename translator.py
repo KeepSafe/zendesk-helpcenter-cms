@@ -14,6 +14,18 @@ import markdown
 import requests
 import shutil
 import configparser
+import unicodedata
+import re
+
+
+def slugify(value):
+    """
+    Converts to lowercase, removes non-word characters (alphanumerics and underscores) and converts spaces to
+    hyphens. Also strips leading and trailing whitespace.
+    """
+    value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub('[^\w\s-]', '', value).strip().lower()
+    return re.sub('[-\s]+', '-', value)
 
 
 class Logger(object):
@@ -117,7 +129,7 @@ class ContentRepository(object):
         return name.endswith(ContentRepository.CONTENT_NAME_EXTENSION) or name == ContentRepository.CONTENT_GROUP_FILENAME
 
     def save_group(self, group, path):
-        group_path = os.path.join(path, group['name'])
+        group_path = os.path.join(path, slugify(group['name']))
         os.makedirs(group_path, exist_ok=True)
         group_content = {
             'name': group['name'],
@@ -131,13 +143,13 @@ class ContentRepository(object):
         return group_path
 
     def save_article(self, article, group_path):
-        filename = os.path.join(group_path, article['name'] + ContentRepository.CONTENT_BODY_EXTENSION)
+        filename = os.path.join(group_path, slugify(article['name']) + ContentRepository.CONTENT_BODY_EXTENSION)
         if not os.path.exists(filename):
             with open(filename, 'w') as file:
                 LOG.info('saving article content {} to path {}', article['name'], filename)
                 file_content = html2text.html2text(article['body'])
                 file.write(file_content)
-        filename = os.path.join(group_path, article['name'] + ContentRepository.CONTENT_NAME_EXTENSION)
+        filename = os.path.join(group_path, slugify(article['name']) + ContentRepository.CONTENT_NAME_EXTENSION)
         if not os.path.exists(filename):
             with open(filename, 'w') as file:
                 LOG.info('saving article name {} to path {}', article['name'], filename)
