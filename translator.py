@@ -119,6 +119,11 @@ class Group(object):
     def zendesk_id(self):
         return self.meta_repo.read(self.meta_filename).get('id')
 
+    def fixme(self):
+        os.makedirs(self.path, exist_ok=True)
+        if not os.path.exists(self.content_filename):
+            self.content = {'name': os.path.basename(self.path)}
+
     @staticmethod
     def from_zendesk(parent_path, zendesk_group, parent=None):
         name = zendesk_group['name']
@@ -196,6 +201,11 @@ class Article(object):
                 locale = name.split('.')[-1]
                 result[locale] = os.path.join(self.path, file)
         return result
+
+    def fixme(self):
+        os.makedirs(self.path, exist_ok=True)
+        if not os.path.exists(self.content_filename):
+            self.content = {'name': self.name}
 
     @staticmethod
     def from_zendesk(section_path, zendesk_article):
@@ -614,8 +624,6 @@ class RemoveTask(object):
         self.options = options
         self.zendesk = ZendeskClient(options)
         self.translate = WebTranslateItClient(options)
-        self.meta = MetaRepository()
-        self.repo = ContentRepository()
 
     def execute(self):
         LOG.info('executing delete task...')
@@ -649,30 +657,6 @@ class RemoveTask(object):
         self.repo.delete_article(article_dir, article_name)
 
 
-class AddTask(object):
-
-    """
-    Creates default files when adding new article in a new category/section
-    """
-
-    def __init__(self, options):
-        super().__init__()
-        self.options = options
-        self.repo = ContentRepository()
-
-    def execute(self):
-        path = self.options['path']
-        article_path = os.path.dirname(path)
-        article_name, _ = os.path.splitext(os.path.basename(path))
-        section_path = os.path.dirname(article_path)
-        section_name = os.path.basename(article_path)
-        category_path = os.path.dirname(section_path)
-        category_name = os.path.basename(section_path)
-        self.repo.save_group({'name': category_name, 'description': ''}, category_path)
-        self.repo.save_group({'name': section_name, 'description': ''}, section_path)
-        self.repo.save_article({'name': article_name, 'body': ''}, article_path)
-
-
 class MoveTask(object):
 
     """
@@ -703,8 +687,22 @@ class DoctorTask(object):
     Verifies if everything is valid and creates missing files.
     """
 
+    def __init__(self, options):
+        super().__init__()
+        self.options = options
+
     def execute(self):
-        pass
+        LOG.info('executing doctor task...')
+        root = self.options['root_folder']
+        category_paths = [os.path.join(root, name) for name in os.listdir(root)
+                          if not os.path.isfile(os.path.join(root, name))]
+        for category_path in category_paths:
+            category = Group(category_path)
+            category.fixme()
+            for section in category.children:
+                section.fixme()
+                for article in section.children:
+                    article.fixme()
 
 
 tasks = {
@@ -712,7 +710,6 @@ tasks = {
     'export': ExportTask,
     'translate': TranslateTask,
     'remove': RemoveTask,
-    'add': AddTask,
     'move': MoveTask,
     'doctor': DoctorTask
 }
@@ -730,7 +727,6 @@ def parse_args():
     task_parsers = {task_parser: subparsers.add_parser(task_parser) for task_parser in tasks}
 
     task_parsers['remove'].add_argument('-p', '--path', help='Set path for removing an item')
-    task_parsers['add'].add_argument('-p', '--path', help='Set path for removing an item')
 
     task_parsers['move'].add_argument('-s', '--source', help='Set source category/section/article')
     task_parsers['move'].add_argument('-d', '--destination', help='Set destination category/section/article')
