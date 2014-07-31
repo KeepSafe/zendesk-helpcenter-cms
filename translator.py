@@ -231,6 +231,10 @@ class Article(object):
             return None
 
     @property
+    def attachments_path(self):
+        return os.path.join(self.path, self.name + '_attachments')
+
+    @property
     def translate_ids(self):
         data = self.meta_repo.read(self.meta_filename)
         if data:
@@ -542,6 +546,17 @@ class ZendeskClient(object):
         requests.put(url, data=json.dumps(data), auth=(self.options['user'], self.options['password']),
                      headers={'Content-type': 'application/json'})
 
+    def download_article_attachments(self, article_id, attachments_path):
+        url = self.url_for('articles/{}/attachments.json'.format(article_id))
+        response = requests.get(url, auth=(self.options['user'], self.options['password']))
+        attachments = response.json()
+        for attachment in attachments['article_attachments']:
+            content_url = attachment['content_url']
+            response = requests.get(content_url, stream=True)
+            with open(os.path.join(attachments_path, attachment['file_name']), 'w') as file:
+                for chunk in response.iter_content(1024):
+                    file.write(chunk)
+
 
 class WebTranslateItClient(object):
 
@@ -618,7 +633,9 @@ class ImportTask(object):
         zendesk_articles = self.zendesk.fetch_articles(section.zendesk_id)
         for zendesk_article in zendesk_articles:
             LOG.debug('creating article {}', zendesk_article['name'])
-            Article.from_zendesk(section.path, zendesk_article)
+            article = Article.from_zendesk(section.path, zendesk_article)
+            #TODO uncomment for attachment saving
+            #self.zendesk.download_article_attachments(article.zendesk_id, article.attachments_path)
 
 
 class ExportTask(object):
