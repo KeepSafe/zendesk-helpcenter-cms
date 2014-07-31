@@ -144,6 +144,10 @@ class Group(object):
         self.meta_repo.remove(self.meta_filename)
         self.content_repo.remove_group(self.path)
 
+    def move_to(self, group):
+        self.content_repo.move(self.path, group.path)
+        self.path = os.path.join(group.path, os.path.basename(self.path))
+
     @staticmethod
     def from_zendesk(parent_path, zendesk_group, parent=None):
         name = zendesk_group['name']
@@ -152,6 +156,14 @@ class Group(object):
         group.meta = zendesk_group
         group.content = {'name': name, 'description': zendesk_group['description']}
         return group
+
+    @staticmethod
+    def from_path(root, path):
+        if root.strip('/') == os.path.dirname(path).strip('/'):
+            return Group(path), None
+        else:
+            category = Group(os.path.dirname(path))
+            return category, Group(path, category)
 
 
 class Article(object):
@@ -227,6 +239,13 @@ class Article(object):
             self.content_repo.remove(body_filepath)
         self.meta_repo.remove(self.meta_filename)
 
+    def move_to(self, group):
+        for locale, (content_filepath, body_filepath) in self.translations.items():
+            self.content_repo.move(content_filepath, group.path)
+            self.content_repo.move(body_filepath, group.path)
+        self.meta_repo.move(self.meta_filename, group.path)
+        self.path = group.path
+
     def _translations(self, filepath):
         result = {}
         master_name, master_ext = os.path.splitext(os.path.basename(filepath))
@@ -277,6 +296,9 @@ class MetaRepository(object):
         LOG.debug('removing file {}', filepath)
         os.remove(filepath)
 
+    def move(self, source, destination):
+        shutil.move(source, destination)
+
 
 class ContentRepository(object):
 
@@ -305,6 +327,9 @@ class ContentRepository(object):
     def remove_group(self, filepath):
         LOG.debug('removing folder {}', filepath)
         shutil.rmtree(filepath)
+
+    def move(self, source, destination):
+        shutil.move(source, destination)
 
 
 class ZendeskClient(object):
@@ -344,18 +369,11 @@ class ZendeskClient(object):
         return self._fetch(url)['articles']
 
     def update_category(self, category):
-        url = 'categories/{}/translations{}.json'
-        category_id = category.zendesk_id
-        translations = self._group_translations(category.translations)
-        missing_url = self.url_for('categories/{}/translations/missing.json'.format(category.zendesk_id))
-        return self._translate(url, missing_url, category_id, translations)
+        return self._update_group(category, 'categories/{}/translations{}.json',
+                                  'categories/{}/translations/missing.json')
 
     def update_section(self, section):
-        url = 'sections/{}/translations{}.json'
-        section_id = section.zendesk_id
-        translations = self._group_translations(section.translations)
-        missing_url = self.url_for('sections/{}/translations/missing.json'.format(section_id))
-        return self._translate(url, missing_url, section_id, translations)
+        return self._update_group(section, 'sections/{}/translations{}.json', 'sections/{}/translations/missing.json')
 
     def update_article(self, article):
         url = 'articles/{}/translations{}.json'
@@ -363,6 +381,12 @@ class ZendeskClient(object):
         translations = self._article_translations(article.translations)
         missing_url = self.url_for('articles/{}/translations/missing.json'.format(article_id))
         return self._translate(url, missing_url, article_id, translations)
+
+    def _update_group(self, group, url, missing_url):
+        group_id = group.zendesk_id
+        translations = self._group_translations(group.translations)
+        missing_url = self.url_for('sections/{}/translations/missing.json'.format(group_id))
+        return self._translate(url, missing_url, group_id, translations)
 
     def _group_translations(self, translations):
         result = []
@@ -415,8 +439,8 @@ class ZendeskClient(object):
                               auth=(self.options['user'], self.options['password']),
                               headers={'Content-type': 'application/json'})
         if response.status_code not in [200, 201]:
-            raise Exception('there was a problem uploading translations at {}. status was {} and message {}', url,
-                            response.status_code, response.text)
+            raise Exception('there was a problem uploading translations at {}. status was {} and message {}'
+                            .format(url, response.status_code, response.text))
         response_data = response.json()
         return response_data['translation']
 
@@ -424,8 +448,8 @@ class ZendeskClient(object):
         response = requests.get(url, auth=(self.options['user'], self.options['password']),
                                 headers={'Content-type': 'application/json'})
         if response.status_code != 200:
-            raise Exception('there was a problem fetching missng locales from {}. status was {} and message {}', url,
-                            response.status_code, response.text)
+            raise Exception('there was a problem fetching missng locales from {}. status was {} and message {}'
+                            .format(url, response.status_code, response.text))
         response_data = response.json()
         return response_data['locales']
 
@@ -433,8 +457,8 @@ class ZendeskClient(object):
         response = requests.post(url, data=json.dumps(data), auth=(self.options['user'], self.options['password']),
                                  headers={'Content-type': 'application/json'})
         if response.status_code != 201:
-            raise Exception('there was a problem creating an item at {}. status was {} and message {}', url,
-                            response.status_code, response.text)
+            raise Exception('there was a problem creating an item at {}. status was {} and message {}'
+                            .format(url, response.status_code, response.text))
         return response.json()
 
     def create_category(self, translations):
@@ -485,6 +509,28 @@ class ZendeskClient(object):
         response = requests.delete(url, auth=(self.options['user'], self.options['password']))
         return response.status_code == 200
 
+    def move_article(self, article_id, section_id):
+        url = self.url_for('articles/{}.json'.format(article_id))
+        LOG.debug('moving article {}', url)
+        data = {
+            'article': {
+                'section_id': section_id
+            }
+        }
+        requests.put(url, data=json.dumps(data), auth=(self.options['user'], self.options['password']),
+                     headers={'Content-type': 'application/json'})
+
+    def move_section(self, section_id, category_id):
+        url = self.url_for('sections/{}.json'.format(section_id))
+        LOG.debug('moving section {}', url)
+        data = {
+            'section': {
+                'category_id': category_id
+            }
+        }
+        requests.put(url, data=json.dumps(data), auth=(self.options['user'], self.options['password']),
+                     headers={'Content-type': 'application/json'})
+
 
 class WebTranslateItClient(object):
 
@@ -504,7 +550,7 @@ class WebTranslateItClient(object):
             normalized_filepath = filepath.replace('\\', '/')
             url = self.url_for('files')
             LOG.debug('upload file {} for transaltion to {}', normalized_filepath, url)
-            response = requests.post(self.url_for('files'),
+            response = requests.post(url,
                                      data={'file': normalized_filepath, 'name': normalized_filepath},
                                      files={'file': file})
             if response.status_code == 200:
@@ -515,7 +561,16 @@ class WebTranslateItClient(object):
         for file_id in file_ids:
             url = self.url_for('files/' + file_id)
             LOG.debug('removing file {} from {}', file_id, url)
-            response = requests.delete(url)
+            requests.delete(url)
+
+    def move(self, file_id, new_path):
+        with open(new_path, 'r') as file:
+            normalized_new_path = new_path.replace('\\', '/')
+            url = self.url_for('files/{}/locales/en'.format(file_id))
+            LOG.debug('update file {} for transaltion', normalized_new_path)
+            requests.put(url,
+                         data={'file': normalized_new_path, 'name': normalized_new_path},
+                         files={'file': file})
 
 
 class ImportTask(object):
@@ -580,7 +635,7 @@ class ExportTask(object):
                 self.zendesk.update_category(category)
             else:
                 LOG.info('exporting new category from {}', category.content_filename)
-                new_category = self.zendesk.create_category(category.transaltions)
+                new_category = self.zendesk.create_category(category.translations)
                 category.meta = new_category
                 category_id = new_category['id']
 
@@ -674,16 +729,15 @@ class RemoveTask(object):
 
     def _delete_group(self, path):
         LOG.info('deleting group from {}', path)
-        if self.options['root'].strip('/') == os.path.dirname(path).strip('/'):
-            group = Group(path)
+        category, section = Group.from_path(self.options['root'], path)
+        if section:
+            group = section
+            for article in group.children:
+                self._delete_article(article)
+        else:
+            group = category
             for section in group.children:
                 self._delete_group(section.path)
-        else:
-            category = Group(os.path.dirname(path))
-            group = Group(path, category)
-            for article in group.children:
-                print(article.path)
-                self._delete_article(article)
         self.zendesk.delete_section(group.zendesk_id)
         self.translate.delete(group.translate_ids)
         group.remove()
@@ -708,17 +762,49 @@ class MoveTask(object):
         self.options = options
         self.zendesk = ZendeskClient(options)
         self.translate = WebTranslateItClient(options)
-        self.meta = MetaRepository()
-        self.repo = ContentRepository()
 
     def execute(self):
         source = self.options['source']
         destination = self.options['destination']
+        article = None
+        group = None
 
-        self.translate.move(source, destination)
-        self.zendesk.move(source, destination)
-        self.meta.move(source, destination)
-        self.repo.move(source, destination)
+        if os.path.isfile(source):
+            article_name, _ = os.path.splitext(os.path.basename(source))
+            article_dir = os.path.dirname(source)
+            article = Article(article_dir, article_name)
+        else:
+            category = Group(os.path.dirname(source))
+            group = Group(source, category)
+
+        dest_category, dest_section = Group.from_path(self.options['root'], destination)
+
+        if article and not dest_section:
+            raise ValueError('Cant move article {} to category {}, please specify a section'
+                             .format(article.name, dest_category.path))
+
+        if article:
+            LOG.info('moving article {} to section {}', article.name, dest_section.path)
+            body_translate_id, content_translate_id = article.translate_ids
+            self.zendesk.move_article(article.zendesk_id, dest_section.zendesk_id)
+            article.move_to(dest_section)
+            self.translate.move(body_translate_id, article.body_filename)
+            self.translate.move(content_translate_id, article.content_filename)
+        elif group:
+            LOG.info('moving section {} to category {}', group.path, dest_category.path)
+            content_translate_id, = group.translate_ids
+            self.zendesk.move_section(group.zendesk_id, dest_category.zendesk_id)
+            group.move_to(dest_category)
+            for article in group.children:
+                LOG.info('moving article {} in translations', article.name)
+                body_translate_id, content_translate_id = article.translate_ids
+                self.translate.move(body_translate_id, article.body_filename)
+                self.translate.move(content_translate_id, article.content_filename)
+            self.translate.move(content_translate_id, group.content_filename)
+
+        else:
+            raise ValueError('Neither section nor article was specified as source. please check the path {}'
+                             .format(source))
 
 
 class DoctorTask(object):
@@ -768,8 +854,8 @@ def parse_args():
 
     task_parsers['remove'].add_argument('path', help='Set path for removing an item')
 
-    task_parsers['move'].add_argument('-s', '--source', help='Set source category/section/article')
-    task_parsers['move'].add_argument('-d', '--destination', help='Set destination category/section/article')
+    task_parsers['move'].add_argument('source', help='Set source section/article')
+    task_parsers['move'].add_argument('destination', help='Set destination category/section')
 
     return parser.parse_args()
 
