@@ -117,12 +117,24 @@ class Group(object):
 
     @property
     def zendesk_id(self):
-        return self.meta_repo.read(self.meta_filename).get('id')
+        data = self.meta_repo.read(self.meta_filename)
+        if data:
+            return self.meta_repo.read(self.meta_filename).get('id')
+        else:
+            return None
+
+    @property
+    def translate_ids(self):
+        data = self.meta_repo.read(self.meta_filename)
+        if data:
+            return self.meta_repo.read(self.meta_filename).get('webtranslateit_ids')
+        else:
+            return []
 
     def fixme(self):
         os.makedirs(self.path, exist_ok=True)
         if not os.path.exists(self.content_filename):
-            self.content = {'name': os.path.basename(self.path)}
+            self.content = {'name': os.path.basename(self.path), 'description': ''}
 
     def remove(self):
         for child in self.children:
@@ -189,7 +201,19 @@ class Article(object):
 
     @property
     def zendesk_id(self):
-        return self.meta_repo.read(self.meta_filename).get('id')
+        data = self.meta_repo.read(self.meta_filename)
+        if data:
+            return self.meta_repo.read(self.meta_filename).get('id')
+        else:
+            return None
+
+    @property
+    def translate_ids(self):
+        data = self.meta_repo.read(self.meta_filename)
+        if data:
+            return self.meta_repo.read(self.meta_filename).get('webtranslateit_ids')
+        else:
+            return []
 
     @property
     def translations(self):
@@ -245,12 +269,9 @@ class MetaRepository(object):
         return None
 
     def save(self, filepath, data):
-        if not os.path.exists(filepath):
-            with open(filepath, 'w') as file:
-                LOG.info('saving meta info {} to path {}', data['name'], filepath)
-                json.dump(data, file, indent=4, sort_keys=True)
-        else:
-            LOG.info('meta info {} at path {} already exists, skipping...', data['name'], filepath)
+        with open(filepath, 'w') as file:
+            LOG.info('saving meta info {} to path {}', data['name'], filepath)
+            json.dump(data, file, indent=4, sort_keys=True)
 
     def remove(self, filepath):
         LOG.debug('removing file {}', filepath)
@@ -359,13 +380,13 @@ class ZendeskClient(object):
 
     def _article_translations(self, translations):
         result = []
-        for locale, (content_filepath, body_filepath) in translations.items():
+        for locale, (body_filepath, content_filepath) in translations.items():
             with open(content_filepath, 'r') as file:
-                content = json.load(file)
-                article_name = content['name']
+                file_data = json.load(file)
+                article_name = file_data['name']
             with open(body_filepath, 'r') as file:
-                content = file.read()
-                article_body = markdown.markdown(content)
+                file_data = file.read()
+                article_body = markdown.markdown(file_data)
             translation = {
                 'title': article_name,
                 'body': article_body,
@@ -482,14 +503,19 @@ class WebTranslateItClient(object):
         with open(filepath, 'r') as file:
             normalized_filepath = filepath.replace('\\', '/')
             url = self.url_for('files')
-            # TODO handle response
             LOG.debug('upload file {} for transaltion to {}', normalized_filepath, url)
             response = requests.post(self.url_for('files'),
                                      data={'file': normalized_filepath, 'name': normalized_filepath},
                                      files={'file': file})
+            if response.status_code == 200:
+                return str(response.json())
+            return None
 
-    def delete(self, filepath):
-        pass
+    def delete(self, file_ids):
+        for file_id in file_ids:
+            url = self.url_for('files/' + file_id)
+            LOG.debug('removing file {} from {}', file_id, url)
+            response = requests.delete(url)
 
 
 class ImportTask(object):
@@ -601,15 +627,24 @@ class TranslateTask(object):
             if os.path.isdir(category_path):
                 category = Group(category_path)
                 LOG.info('upload {} for transaltion', category.content_filename)
-                self.translate.create(category.content_filename)
+                category_translate_id = self.translate.create(category.content_filename)
+                category_meta = category.meta
+                category_meta.update({'webtranslateit_ids': [category_translate_id]})
+                category.meta = category_meta
                 for section in category.children:
                     LOG.info('upload {} for transaltion', section.content_filename)
-                    self.translate.create(section.content_filename)
+                    section_translate_id = self.translate.create(section.content_filename)
+                    section_meta = section.meta
+                    section_meta.update({'webtranslateit_ids': [section_translate_id]})
+                    section.meta = section_meta
                     for article in section.children:
                         LOG.info('upload {} for transaltion', article.content_filename)
-                        self.translate.create(article.content_filename)
+                        content_translate_id = self.translate.create(article.content_filename)
                         LOG.info('upload {} for transaltion', article.body_filename)
-                        self.translate.create(article.body_filename)
+                        body_translate_id = self.translate.create(article.body_filename)
+                        article_meta = article.meta
+                        article_meta.update({'webtranslateit_ids': [body_translate_id, content_translate_id]})
+                        article.meta = article_meta
 
 
 class RemoveTask(object):
@@ -650,7 +685,7 @@ class RemoveTask(object):
                 print(article.path)
                 self._delete_article(article)
         self.zendesk.delete_section(group.zendesk_id)
-        self.translate.delete(group.path)
+        self.translate.delete(group.translate_ids)
         group.remove()
 
     def _delete_article(self, article):
@@ -658,7 +693,7 @@ class RemoveTask(object):
         article_id = article.zendesk_id
         if article_id:
             self.zendesk.delete_article(article.zendesk_id)
-        self.translate.delete(article.path)
+        self.translate.delete(article.translate_ids)
         article.remove()
 
 
