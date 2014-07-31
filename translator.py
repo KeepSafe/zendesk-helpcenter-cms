@@ -2,7 +2,7 @@
     translator
     ~~~~~~~~~~
 
-    Manages zendesk help center translation.
+    Manages zendesk help center translations.
 
     :copyright: (c) 2014 by KeepSafe.
 """
@@ -18,6 +18,10 @@ import configparser
 
 def to_json(data):
     return json.dumps(data, indent=4, sort_keys=True)
+
+
+def from_json(data):
+    return json.loads(data)
 
 
 class Logger(object):
@@ -36,50 +40,57 @@ class Logger(object):
 
     def info(self, message, *args):
         print(message.format(*args))
-        pass
 
 
 LOG = Logger()
+DEFAULT_LOCALE = 'en-us'
 
 
 class Group(object):
 
-    def __init__(self, name, path, parent=None):
+    def __init__(self, path, parent=None):
         self.meta_repo = MetaRepository()
-        self.content = ContentRepository()
-        self.name = name
+        self.content_repo = ContentRepository()
         self.path = path
         self.parent = parent
+        os.makedirs(path, exist_ok=True)
 
     def _articles(self):
-        filepaths = [filepath for filepath in os.listdir(self.path) if os.path.isfile(os.path.join(self.path, filepath))]
+        filepaths = [filepath for filepath in os.listdir(self.path)
+                     if os.path.isfile(os.path.join(self.path, filepath))]
         article_names = filter(lambda a: a.endswith('.md'), filepaths)
         article_names_bits = map(lambda a: a.split('.'), article_names)
         article_names_bits = filter(lambda a: len(a) == 2, article_names_bits)
         article_names = map(lambda a: a[0], article_names_bits)
         articles = [Article.from_path(self.path, article_name) for article_name in article_names]
-        print(articles)
         return articles
 
     def _subgroups(self):
-        filepaths = [filepath for filepath in os.listdir(self.path) if os.path.isdir(os.path.join(self.path, filepath))]
+        filepaths = [filepath for filepath in os.listdir(
+            self.path) if os.path.isdir(os.path.join(self.path, filepath))]
         return [Group.from_path(os.path.join(self.path, filepath), self) for filepath in filepaths]
+
+    def _meta_filename(self):
+        return os.path.join(self.path, '.group.meta')
+
+    def _content_filename(self):
+        return os.path.join(self.path, '__group__.json')
 
     @property
     def meta(self):
-        path = os.path.join(self.path, '.group.meta')
-        data = to_json({'zendesk_id': self.zendesk_id})
-        return [(path, data)]
+        return self.meta_repo.read(self._meta_filename())
+
+    @meta.setter
+    def meta(self, value):
+        self.meta_repo.save(self._meta_filename(), value)
 
     @property
-    def contents(self):
-        data = to_json({
-            'name': self.name,
-            'description': self.description
-        })
-        return [
-            (os.path.join(self.path, '__group__.json'), data)
-        ]
+    def content(self):
+        return from_json(self.content_repo.read(self._content_filename()))
+
+    @content.setter
+    def content(self, value):
+        self.content_repo.save(self._content_filename(), to_json(value))
 
     @property
     def children(self):
@@ -88,10 +99,9 @@ class Group(object):
         else:
             return self._subgroups()
 
-    def save(self):
-        os.makedirs(self.path, exist_ok=True)
-        self.meta_repo.save(self)
-        self.content.save(self)
+    @property
+    def zendesk_id(self):
+        return self.meta_repo.id(self._meta_filename())
 
     def delete(self):
         pass
@@ -106,9 +116,9 @@ class Group(object):
     def from_zendesk(parent_path, zendesk_group, parent=None):
         name = zendesk_group['name']
         path = os.path.join(parent_path, name)
-        group = Group(name, path, parent)
-        group.zendesk_id = zendesk_group['id']
-        group.description = zendesk_group['description']
+        group = Group(path, parent)
+        group.meta = zendesk_group
+        group.content = {'name': name, 'description': zendesk_group['description']}
         return group
 
     @staticmethod
@@ -122,28 +132,49 @@ class Group(object):
 
 class Article(object):
 
-    def __init__(self, name, body, path):
+    def __init__(self, path, name):
         self.meta_repo = MetaRepository()
-        self.content = ContentRepository()
-        self.name = name
-        self.body = body
+        self.content_repo = ContentRepository()
         self.path = path
-        self.translations = {}
+        self.name = name
+
+    def _body_filename(self):
+        return os.path.join(self.path, '{}.md'.format(self.name))
+
+    def _content_filename(self):
+        return os.path.join(self.path, '{}.json'.format(self.name))
+
+    def _meta_filename(self):
+        return os.path.join(self.path, '.article_{}.meta'.format(self.name))
 
     @property
     def meta(self):
-        return [(self.meta_filename(self.path, self.name), to_json({'zendesk_id': self.zendesk_id}))]
+        return self.meta_repo.read(self._meta_filename())
+
+    @meta.setter
+    def meta(self, value):
+        self.meta_repo.save(self._meta_filename(), value)
 
     @property
-    def contents(self):
-        return [
-            (self.body_filename(self.path, self.name), self.body),
-            (self.name_filename(self.path, self.name), to_json({'name': self.name}))
-        ]
+    def content(self):
+        return self.content_repo.read(self._content_filename())
 
-    def save(self):
-        self.meta_repo.save(self)
-        self.content.save(self)
+    @content.setter
+    def content(self, value):
+        self.name = value['name']
+        self.content_repo.save(self._content_filename(), to_json(value))
+
+    @property
+    def body(self):
+        return self.content_repo.read(self._body_filename())
+
+    @body.setter
+    def body(self, value):
+        self.content_repo.save(self._body_filename(), value)
+
+    @property
+    def zendesk_id(self):
+        return self.meta_repo.id(self._meta_filename())
 
     def delete(self):
         pass
@@ -155,23 +186,12 @@ class Article(object):
         print('translating: ' + self.name)
 
     @staticmethod
-    def body_filename(path, name):
-        return os.path.join(path, '{}.md'.format(name))
-
-    @staticmethod
-    def name_filename(path, name):
-        return os.path.join(path, '{}.json'.format(name))
-
-    @staticmethod
-    def meta_filename(path, name):
-        return os.path.join(path, '.article_{}.meta'.format(name))
-
-    @staticmethod
     def from_zendesk(section_path, zendesk_article):
         name = zendesk_article['name']
-        body = html2text.html2text(zendesk_article['body'])
-        article = Article(name, body, section_path)
-        article.zendesk_id = zendesk_article['id']
+        article = Article(section_path, name)
+        article.meta = zendesk_article
+        article.content = {'name': zendesk_article['name']}
+        article.body = html2text.html2text(zendesk_article['body'])
         return article
 
     @staticmethod
@@ -181,8 +201,7 @@ class Article(object):
             raise ValueError('given path {} does not exist'.format(article_filepath))
         if not os.path.isdir(path):
             raise ValueError('given path {} is not a directory'.format(article_filepath))
-        body = ContentRepository().read(article_filepath)
-        return Article(article_name, body, path)
+        return Article(article_name, path)
 
 
 class MetaRepository(object):
@@ -192,8 +211,7 @@ class MetaRepository(object):
     and reads whatever is needed from there. Also has some utility methods which requite meta info.
     """
 
-    def read(self, item):
-        filepath = item.meta_filename
+    def read(self, filepath):
         if os.path.exists(filepath):
             with open(filepath, 'r') as file:
                 LOG.debug('reading meta {}', filepath)
@@ -201,19 +219,21 @@ class MetaRepository(object):
         LOG.debug('unable to read meta {}', filepath)
         return None
 
-    def save(self, item):
-        for filepath, data in item.meta:
-            if not os.path.exists(filepath):
-                with open(filepath, 'w') as file:
-                    LOG.info('saving meta info {} to path {}', item.name, filepath)
-                    json.dump(data, file, indent=4, sort_keys=True)
-            else:
-                LOG.info('meta info {} at path {} already exists, skipping...', item.name, filepath)
+    def save(self, filepath, data):
+        if not os.path.exists(filepath):
+            with open(filepath, 'w') as file:
+                LOG.info('saving meta info {} to path {}', data['name'], filepath)
+                json.dump(data, file, indent=4, sort_keys=True)
+        else:
+            LOG.info('meta info {} at path {} already exists, skipping...', data['name'], filepath)
 
     def delete(self, item):
         filepath = item.meta_filepath
         LOG.debug('removing file {}', filepath)
         os.remove(filepath)
+
+    def id(self, filepath):
+        return self.read(filepath)['id']
 
 
 class ContentRepository(object):
@@ -230,21 +250,17 @@ class ContentRepository(object):
     def is_content(self, name):
         return name.endswith(ContentRepository.CONTENT_NAME_EXTENSION) or name == ContentRepository.CONTENT_GROUP_FILENAME
 
-    def save(self, item):
-        for filepath, data in item.contents:
-            if not os.path.exists(filepath):
-                with open(filepath, 'w') as file:
-                    file.write(data)
-                LOG.info('saving content {} to path {}', item.name, filepath)
-            else:
-                LOG.info('content {} at path {} already exists, skipping...', item.name, filepath)
+    def save(self, filepath, data):
+        if not os.path.exists(filepath):
+            with open(filepath, 'w') as file:
+                file.write(data)
+            LOG.info('saving content to path {}', filepath)
+        else:
+            LOG.info('content at path {} already exists, skipping...', filepath)
 
-    def read(self, item):
-        results = {}
-        for filepath in item.content_filepaths:
-            with open(filepath, 'r') as file:
-                results[filepath] = file.read()
-        return results
+    def read(self, filepath):
+        with open(filepath, 'r') as file:
+            return file.read()
 
     def get_translated_group(self, files):
         result = {}
@@ -320,8 +336,8 @@ class ZendeskClient(object):
     def _fetch(self, url):
         response = requests.get(url)
         if response.status_code != 200:
-            raise Exception('there was a problem fetching data from {}. status was {} and message {}', url,
-                            response.status_code, response.text)
+            raise Exception('there was a problem fetching data from {}. status was {} and message {}'.format(url,
+                            response.status_code, response.text))
         return response.json()
 
     def fetch_categories(self):
@@ -488,23 +504,20 @@ class ImportTask(object):
         for zendesk_category in zendesk_categories:
             LOG.debug('creating category {}', zendesk_category['name'])
             category = Group.from_zendesk(self.options['root_folder'], zendesk_category)
-            category.save()
-            category.sections = self.create_sections(category)
+            self.create_sections(category)
 
     def create_sections(self, category):
         zendesk_sections = self.zendesk.fetch_sections(category.zendesk_id)
         for zendesk_section in zendesk_sections:
             LOG.debug('creating section {}', zendesk_section['name'])
             section = Group.from_zendesk(category.path, zendesk_section, category)
-            section.save()
             self.create_articles(section)
 
     def create_articles(self, section):
         zendesk_articles = self.zendesk.fetch_articles(section.zendesk_id)
         for zendesk_article in zendesk_articles:
             LOG.debug('creating article {}', zendesk_article['name'])
-            article = Article.from_zendesk(section.path, zendesk_article)
-            article.save()
+            Article.from_zendesk(section.path, zendesk_article)
 
 
 class ExportTask(object):
@@ -729,6 +742,7 @@ class DoctorTask(object):
     """
 
     def execute(self):
+        pass
 
 
 tasks = {
@@ -745,10 +759,10 @@ tasks = {
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', '--verbose', help='Increase output verbosity',
-                             action='store_true')
+                        action='store_true')
     parser.add_argument('-r', '--root',
-                             help='Article\'s root folder',
-                             default='help_center_content')
+                        help='Article\'s root folder',
+                        default='help_center_content')
     subparsers = parser.add_subparsers(help='Task to be performed.', dest='task')
 
     task_parsers = {task_parser: subparsers.add_parser(task_parser) for task_parser in tasks}
