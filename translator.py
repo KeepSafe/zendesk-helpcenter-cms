@@ -124,6 +124,14 @@ class Group(object):
         if not os.path.exists(self.content_filename):
             self.content = {'name': os.path.basename(self.path)}
 
+    def remove(self):
+        for child in self.children:
+            child.remove()
+        for locale, filepath in self.translations.items():
+            self.content_repo.remove(filepath)
+        self.meta_repo.remove(self.meta_filename)
+        self.content_repo.remove_group(self.path)
+
     @staticmethod
     def from_zendesk(parent_path, zendesk_group, parent=None):
         name = zendesk_group['name']
@@ -189,12 +197,18 @@ class Article(object):
         content_translations = self._translations(self.body_filename)
         return {locale: [content, body_translations[locale]] for locale, content in content_translations.items()}
 
+    def remove(self):
+        for locale, (content_filepath, body_filepath) in self.translations.items():
+            self.content_repo.remove(content_filepath)
+            self.content_repo.remove(body_filepath)
+        self.meta_repo.remove(self.meta_filename)
+
     def _translations(self, filepath):
         result = {}
-        master_name, master_ext = os.path.splitext(os.path.basename(self.content_filename))
+        master_name, master_ext = os.path.splitext(os.path.basename(filepath))
         files = [file for file in os.listdir(self.path) if file.startswith(master_name) and file.endswith(master_ext)]
         for file in files:
-            if file == os.path.basename(self.content_filename):
+            if file == os.path.basename(filepath):
                 result[DEFAULT_LOCALE] = os.path.join(self.path, file)
             else:
                 name, ext = os.path.splitext(file)
@@ -227,9 +241,7 @@ class MetaRepository(object):
     def read(self, filepath):
         if os.path.exists(filepath):
             with open(filepath, 'r') as file:
-                LOG.debug('reading meta {}', filepath)
                 return json.load(file)
-        LOG.debug('unable to read meta {}', filepath)
         return None
 
     def save(self, filepath, data):
@@ -240,8 +252,7 @@ class MetaRepository(object):
         else:
             LOG.info('meta info {} at path {} already exists, skipping...', data['name'], filepath)
 
-    def delete(self, item):
-        filepath = item.meta_filepath
+    def remove(self, filepath):
         LOG.debug('removing file {}', filepath)
         os.remove(filepath)
 
@@ -252,10 +263,6 @@ class ContentRepository(object):
     Handles all content, meaning the stuff that is used to create categories and articles. Categories and sections use
     special file to hold name and description.
     """
-
-    def __init__(self):
-        super().__init__()
-        self.meta = MetaRepository()
 
     def save(self, filepath, data):
         if not os.path.exists(filepath):
@@ -270,24 +277,13 @@ class ContentRepository(object):
             LOG.info('reading content from path {}', filepath)
             return file.read()
 
-    def delete_article(self, article_dir, article_name):
-        files = [f for f in os.listdir(article_dir)]
-        files = map(lambda f: f.split('.'), files)
-        files = filter(lambda f: f[0] == article_name, files)
-        files = map(lambda f: '.'.join(f), files)
-        for article in files:
-            path = os.path.join(article_dir, article)
-            LOG.debug('removeing file {}', path)
-            os.remove(path)
+    def remove(self, filepath):
+        LOG.debug('removing file {}', filepath)
+        os.remove(filepath)
 
-    def delete_group(self, path):
-        shutil.rmtree(path)
-
-    def article_translated_name(self, path, filename):
-        name, _ = os.path.splitext(filename)
-        with open(os.path.join(path, name + ContentRepository.CONTENT_NAME_EXTENSION)) as file:
-            file_data = json.load(file)
-            return file_data['name']
+    def remove_group(self, filepath):
+        LOG.debug('removing folder {}', filepath)
+        shutil.rmtree(filepath)
 
 
 class ZendeskClient(object):
@@ -492,6 +488,9 @@ class WebTranslateItClient(object):
                                      data={'file': normalized_filepath, 'name': normalized_filepath},
                                      files={'file': file})
 
+    def delete(self, filepath):
+        pass
+
 
 class ImportTask(object):
 
@@ -632,29 +631,35 @@ class RemoveTask(object):
             raise ValueError('Path to be deleted must exists, but {} doesn\'t'.format(path))
 
         if os.path.isfile(path):
-            self._delete_article(path)
+            article_name, _ = os.path.splitext(os.path.basename(path))
+            article_dir = os.path.dirname(path)
+            self._delete_article(Article(article_dir, article_name))
         else:
             self._delete_group(path)
 
     def _delete_group(self, path):
-        group_id = self.meta.group_id(path)
-        LOG.info('deleting group {} from {}', group_id, path)
-        if self.meta.is_category(path):
-            self.zendesk.delete_category(group_id)
+        LOG.info('deleting group from {}', path)
+        if self.options['root'].strip('/') == os.path.dirname(path).strip('/'):
+            group = Group(path)
+            for section in group.children:
+                self._delete_group(section.path)
         else:
-            self.zendesk.delete_section(group_id)
-        self.translate.delete_file(path)
-        self.repo.delete_group(path)
+            category = Group(os.path.dirname(path))
+            group = Group(path, category)
+            for article in group.children:
+                print(article.path)
+                self._delete_article(article)
+        self.zendesk.delete_section(group.zendesk_id)
+        self.translate.delete(group.path)
+        group.remove()
 
-    def _delete_article(self, path):
-        article_name, _ = os.path.splitext(os.path.basename(path))
-        article_dir = os.path.dirname(path)
-        article_id = self.meta.article_id(article_dir, article_name)
-        LOG.info('deleting article {} from {}', article_name, path)
-        self.zendesk.delete_article(article_id)
-        self.translate.delete_file(path)
-        self.meta.delete_article(article_dir, article_name)
-        self.repo.delete_article(article_dir, article_name)
+    def _delete_article(self, article):
+        LOG.info('deleting article {} from {}', article.name, article.path)
+        article_id = article.zendesk_id
+        if article_id:
+            self.zendesk.delete_article(article.zendesk_id)
+        self.translate.delete(article.path)
+        article.remove()
 
 
 class MoveTask(object):
@@ -726,7 +731,7 @@ def parse_args():
 
     task_parsers = {task_parser: subparsers.add_parser(task_parser) for task_parser in tasks}
 
-    task_parsers['remove'].add_argument('-p', '--path', help='Set path for removing an item')
+    task_parsers['remove'].add_argument('path', help='Set path for removing an item')
 
     task_parsers['move'].add_argument('-s', '--source', help='Set source category/section/article')
     task_parsers['move'].add_argument('-d', '--destination', help='Set destination category/section/article')
