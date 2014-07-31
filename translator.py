@@ -49,11 +49,11 @@ DEFAULT_LOCALE = 'en-us'
 class Group(object):
 
     def __init__(self, path, parent=None):
+        os.makedirs(path, exist_ok=True)
         self.meta_repo = MetaRepository()
         self.content_repo = ContentRepository()
         self.path = path
         self.parent = parent
-        os.makedirs(path, exist_ok=True)
 
     def _articles(self):
         filepaths = [filepath for filepath in os.listdir(self.path)
@@ -62,35 +62,37 @@ class Group(object):
         article_names_bits = map(lambda a: a.split('.'), article_names)
         article_names_bits = filter(lambda a: len(a) == 2, article_names_bits)
         article_names = map(lambda a: a[0], article_names_bits)
-        articles = [Article.from_path(self.path, article_name) for article_name in article_names]
+        articles = [Article(self.path, article_name) for article_name in article_names]
         return articles
 
     def _subgroups(self):
         filepaths = [filepath for filepath in os.listdir(
             self.path) if os.path.isdir(os.path.join(self.path, filepath))]
-        return [Group.from_path(os.path.join(self.path, filepath), self) for filepath in filepaths]
+        return [Group(os.path.join(self.path, filepath), self) for filepath in filepaths]
 
-    def _meta_filename(self):
+    @property
+    def meta_filename(self):
         return os.path.join(self.path, '.group.meta')
 
-    def _content_filename(self):
+    @property
+    def content_filename(self):
         return os.path.join(self.path, '__group__.json')
 
     @property
     def meta(self):
-        return self.meta_repo.read(self._meta_filename())
+        return self.meta_repo.read(self.meta_filename)
 
     @meta.setter
     def meta(self, value):
-        self.meta_repo.save(self._meta_filename(), value)
+        self.meta_repo.save(self.meta_filename, value)
 
     @property
     def content(self):
-        return from_json(self.content_repo.read(self._content_filename()))
+        return from_json(self.content_repo.read(self.content_filename))
 
     @content.setter
     def content(self, value):
-        self.content_repo.save(self._content_filename(), to_json(value))
+        self.content_repo.save(self.content_filename, to_json(value))
 
     @property
     def children(self):
@@ -100,17 +102,22 @@ class Group(object):
             return self._subgroups()
 
     @property
+    def translations(self):
+        result = {}
+        master_name, master_ext = os.path.splitext(os.path.basename(self.content_filename))
+        files = [file for file in os.listdir(self.path) if file.startswith(master_name) and file.endswith(master_ext)]
+        for file in files:
+            if file == os.path.basename(self.content_filename):
+                result[DEFAULT_LOCALE] = os.path.join(self.path, file)
+            else:
+                name, ext = os.path.splitext(file)
+                locale = name.split('.')[-1]
+                result[locale] = os.path.join(self.path, file)
+        return result
+
+    @property
     def zendesk_id(self):
-        return self.meta_repo.id(self._meta_filename())
-
-    def delete(self):
-        pass
-
-    def move(self):
-        pass
-
-    def translate(self):
-        print('translating: ' + self.name)
+        return self.meta_repo.read(self.meta_filename).get('id')
 
     @staticmethod
     def from_zendesk(parent_path, zendesk_group, parent=None):
@@ -121,14 +128,6 @@ class Group(object):
         group.content = {'name': name, 'description': zendesk_group['description']}
         return group
 
-    @staticmethod
-    def from_path(path, parent=None):
-        if not os.path.exists(path):
-            raise ValueError('given path {} does not exist'.format(path))
-        if not os.path.isdir(path):
-            raise ValueError('given path {} is not a directory'.format(path))
-        return Group(os.path.basename(path), path, parent)
-
 
 class Article(object):
 
@@ -138,52 +137,65 @@ class Article(object):
         self.path = path
         self.name = name
 
-    def _body_filename(self):
+    @property
+    def body_filename(self):
         return os.path.join(self.path, '{}.md'.format(self.name))
 
-    def _content_filename(self):
+    @property
+    def content_filename(self):
         return os.path.join(self.path, '{}.json'.format(self.name))
 
-    def _meta_filename(self):
+    @property
+    def meta_filename(self):
         return os.path.join(self.path, '.article_{}.meta'.format(self.name))
 
     @property
     def meta(self):
-        return self.meta_repo.read(self._meta_filename())
+        return self.meta_repo.read(self.meta_filename)
 
     @meta.setter
     def meta(self, value):
-        self.meta_repo.save(self._meta_filename(), value)
+        self.meta_repo.save(self.meta_filename, value)
 
     @property
     def content(self):
-        return self.content_repo.read(self._content_filename())
+        return self.content_repo.read(self.content_filename)
 
     @content.setter
     def content(self, value):
         self.name = value['name']
-        self.content_repo.save(self._content_filename(), to_json(value))
+        self.content_repo.save(self.content_filename, to_json(value))
 
     @property
     def body(self):
-        return self.content_repo.read(self._body_filename())
+        return self.content_repo.read(self.body_filename)
 
     @body.setter
     def body(self, value):
-        self.content_repo.save(self._body_filename(), value)
+        self.content_repo.save(self.body_filename, value)
 
     @property
     def zendesk_id(self):
-        return self.meta_repo.id(self._meta_filename())
+        return self.meta_repo.read(self.meta_filename).get('id')
 
-    def delete(self):
-        pass
+    @property
+    def translations(self):
+        body_translations = self._translations(self.content_filename)
+        content_translations = self._translations(self.body_filename)
+        return {locale: [content, body_translations[locale]] for locale, content in content_translations.items()}
 
-    def move(self):
-        pass
-
-    def translate(self):
-        print('translating: ' + self.name)
+    def _translations(self, filepath):
+        result = {}
+        master_name, master_ext = os.path.splitext(os.path.basename(self.content_filename))
+        files = [file for file in os.listdir(self.path) if file.startswith(master_name) and file.endswith(master_ext)]
+        for file in files:
+            if file == os.path.basename(self.content_filename):
+                result[DEFAULT_LOCALE] = os.path.join(self.path, file)
+            else:
+                name, ext = os.path.splitext(file)
+                locale = name.split('.')[-1]
+                result[locale] = os.path.join(self.path, file)
+        return result
 
     @staticmethod
     def from_zendesk(section_path, zendesk_article):
@@ -193,15 +205,6 @@ class Article(object):
         article.content = {'name': zendesk_article['name']}
         article.body = html2text.html2text(zendesk_article['body'])
         return article
-
-    @staticmethod
-    def from_path(path, article_name):
-        article_filepath = Article.body_filename(path, article_name)
-        if not os.path.exists(path):
-            raise ValueError('given path {} does not exist'.format(article_filepath))
-        if not os.path.isdir(path):
-            raise ValueError('given path {} is not a directory'.format(article_filepath))
-        return Article(article_name, path)
 
 
 class MetaRepository(object):
@@ -232,9 +235,6 @@ class MetaRepository(object):
         LOG.debug('removing file {}', filepath)
         os.remove(filepath)
 
-    def id(self, filepath):
-        return self.read(filepath)['id']
-
 
 class ContentRepository(object):
 
@@ -247,9 +247,6 @@ class ContentRepository(object):
         super().__init__()
         self.meta = MetaRepository()
 
-    def is_content(self, name):
-        return name.endswith(ContentRepository.CONTENT_NAME_EXTENSION) or name == ContentRepository.CONTENT_GROUP_FILENAME
-
     def save(self, filepath, data):
         if not os.path.exists(filepath):
             with open(filepath, 'w') as file:
@@ -260,44 +257,8 @@ class ContentRepository(object):
 
     def read(self, filepath):
         with open(filepath, 'r') as file:
+            LOG.info('reading content from path {}', filepath)
             return file.read()
-
-    def get_translated_group(self, files):
-        result = {}
-        master_name, master_ext = os.path.splitext(ContentRepository.CONTENT_GROUP_FILENAME)
-        for file in files:
-            if file == ContentRepository.CONTENT_GROUP_FILENAME:
-                # TODO make default external and configurable
-                result['en-us'] = file
-            else:
-                name, ext = os.path.splitext(file)
-                if name.startswith(master_name + '.') and ext == master_ext:
-                    locale = name.split('.')[-1]
-                    result[locale] = file
-
-        return result
-
-    def get_translated_articles(self, files):
-        result = {}
-        article_names = filter(lambda a: a.endswith(ContentRepository.CONTENT_BODY_EXTENSION), files)
-        article_names_bits = map(lambda a: a.split('.'), article_names)
-        article_names_bits = filter(lambda a: len(a) == 2, article_names_bits)
-        article_names = map(lambda a: a[0], article_names_bits)
-
-        for article_name in article_names:
-            translated_articles = {}
-            articles = [article for article in files if
-                        article.startswith(article_name) and article.endswith(ContentRepository.CONTENT_BODY_EXTENSION)]
-            for article in articles:
-                if article == article_name + ContentRepository.CONTENT_BODY_EXTENSION:
-                    translated_articles['en-us'] = article
-                else:
-                    name, ext = os.path.splitext(article)
-                    if name.startswith(article_name + '.') and ext == ContentRepository.CONTENT_BODY_EXTENSION:
-                        locale = name.split('.')[-1]
-                        translated_articles[locale] = article
-            result[article_name] = translated_articles
-        return result
 
     def delete_article(self, article_dir, article_name):
         files = [f for f in os.listdir(article_dir)]
@@ -336,8 +297,8 @@ class ZendeskClient(object):
     def _fetch(self, url):
         response = requests.get(url)
         if response.status_code != 200:
-            raise Exception('there was a problem fetching data from {}. status was {} and message {}'.format(url,
-                            response.status_code, response.text))
+            raise Exception('there was a problem fetching data from {}. status was {} and message {}'
+                            .format(url, response.status_code, response.text))
         return response.json()
 
     def fetch_categories(self):
@@ -355,20 +316,58 @@ class ZendeskClient(object):
         LOG.debug('fetching articles from {}', url)
         return self._fetch(url)['articles']
 
-    def update_category(self, category_id, translations):
+    def update_category(self, category):
         url = 'categories/{}/translations{}.json'
-        missing_url = self.url_for('categories/{}/translations/missing.json'.format(category_id))
+        category_id = category.zendesk_id
+        translations = self._group_translations(category.translations)
+        missing_url = self.url_for('categories/{}/translations/missing.json'.format(category.zendesk_id))
         return self._translate(url, missing_url, category_id, translations)
 
-    def update_section(self, section_id, translations):
+    def update_section(self, section):
         url = 'sections/{}/translations{}.json'
+        section_id = section.zendesk_id
+        translations = self._group_translations(section.translations)
         missing_url = self.url_for('sections/{}/translations/missing.json'.format(section_id))
         return self._translate(url, missing_url, section_id, translations)
 
-    def update_article(self, article_id, translations):
+    def update_article(self, article):
         url = 'articles/{}/translations{}.json'
+        article_id = article.zendesk_id
+        translations = self._article_translations(article.translations)
         missing_url = self.url_for('articles/{}/translations/missing.json'.format(article_id))
         return self._translate(url, missing_url, article_id, translations)
+
+    def _group_translations(self, translations):
+        result = []
+        for locale, filepath in translations.items():
+            with open(filepath, 'r') as file:
+                file_data = json.load(file)
+                translation = {
+                    'title': file_data['name'],
+                    'body': file_data['description'],
+                    'locale': locale
+                }
+                result.append(translation)
+        LOG.debug('translations for group {} are {}', filepath, result)
+        return result
+
+    def _article_translations(self, translations):
+        result = []
+        for locale, (content_filepath, body_filepath) in translations.items():
+            with open(content_filepath, 'r') as file:
+                content = json.load(file)
+                article_name = content['name']
+            with open(body_filepath, 'r') as file:
+                content = file.read()
+                article_body = markdown.markdown(content)
+            translation = {
+                'title': article_name,
+                'body': article_body,
+                'locale': locale
+            }
+            result.append(translation)
+        LOG.debug('translations for article {} are {}', content_filepath, result)
+        return result
 
     def _translate(self, url, missing_url, item_id, translations):
         missing_locales = self._missing_locales(missing_url)
@@ -381,7 +380,7 @@ class ZendeskClient(object):
                 self._send_translate_request(create_url, {'translation': translation}, requests.post)
             else:
                 update_url = self.url_for(url.format(item_id, '/' + locale))
-                LOG.debug('creating translation at {}', update_url)
+                LOG.debug('updating translation at {}', update_url)
                 self._send_translate_request(update_url, translation, requests.put)
 
     def _send_translate_request(self, url, translation_data, request_fn):
@@ -416,7 +415,7 @@ class ZendeskClient(object):
         LOG.debug('creating new category at {}', url)
         data = {
             'category': {
-                'translations': translations
+                'translations': self._group_translations(translations)
             }
         }
         return self._create(url, data)['category']
@@ -426,7 +425,7 @@ class ZendeskClient(object):
         LOG.debug('creating new section at {}', url)
         data = {
             'section': {
-                'translations': translations
+                'translations': self._group_translations(translations)
             }
         }
         return self._create(url, data)['section']
@@ -436,7 +435,7 @@ class ZendeskClient(object):
         LOG.debug('creating new article at {}', url)
         data = {
             'article': {
-                'translations': translations
+                'translations': self._article_translations(translations)
             }
         }
         return self._create(url, data)['article']
@@ -473,11 +472,14 @@ class WebTranslateItClient(object):
     def url_for(self, path):
         return WebTranslateItClient.DEFAULT_URL.format(self.api_key, path)
 
-    def create_file(self, filepath):
+    def create(self, filepath):
         with open(filepath, 'r') as file:
-            linux_filepath = filepath.replace('\\', '/')
+            normalized_filepath = filepath.replace('\\', '/')
+            url = self.url_for('files')
             # TODO handle response
-            response = requests.post(self.url_for('files'), data={'file': linux_filepath, 'name': linux_filepath},
+            LOG.debug('upload file {} for transaltion to {}', normalized_filepath, url)
+            response = requests.post(self.url_for('files'),
+                                     data={'file': normalized_filepath, 'name': normalized_filepath},
                                      files={'file': file})
 
 
@@ -492,8 +494,6 @@ class ImportTask(object):
         super().__init__()
         self.options = options
         self.zendesk = ZendeskClient(options)
-        self.repository = ContentRepository()
-        self.meta = MetaRepository()
 
     def execute(self):
         LOG.info('executing import task...')
@@ -531,8 +531,6 @@ class ExportTask(object):
         super().__init__()
         self.options = options
         self.zendesk = ZendeskClient(options)
-        self.meta = MetaRepository()
-        self.repo = ContentRepository()
 
     def execute(self):
         LOG.info('executing export task...')
@@ -540,76 +538,38 @@ class ExportTask(object):
         category_paths = [os.path.join(root, name) for name in os.listdir(root)
                           if not os.path.isfile(os.path.join(root, name))]
         for category_path in category_paths:
-            category_id, category_translations = self._translated_group(category_path)
+            category = Group(category_path)
+            category_id = category.zendesk_id
             if category_id:
-                LOG.info('exporting category {} from {}', category_id, root)
-                self.zendesk.update_category(category_id, category_translations)
+                LOG.info('exporting category from {}', category.content_filename)
+                self.zendesk.update_category(category)
             else:
-                LOG.info('exporting new category from {}', root)
-                new_category = self.zendesk.create_category(category_translations)
-                self.meta.save_group(new_category, category_path)
+                LOG.info('exporting new category from {}', category.content_filename)
+                new_category = self.zendesk.create_category(category.transaltions)
+                category.meta = new_category
                 category_id = new_category['id']
 
-            section_paths = [os.path.join(category_path, name) for name in os.listdir(category_path)
-                             if not os.path.isfile(os.path.join(category_path, name))]
-            for section_path in section_paths:
-                section_id, section_translations = self._translated_group(section_path)
+            sections = category.children
+            for section in sections:
+                section_id = section.zendesk_id
                 if section_id:
-                    LOG.info('exporting section {} from {}', section_id, category_path)
-                    self.zendesk.update_section(section_id, section_translations)
+                    LOG.info('exporting section from {}', section.content_filename)
+                    self.zendesk.update_section(section)
                 else:
-                    LOG.info('exporting new section from {}', category_path)
-                    new_section = self.zendesk.create_section(category_id, section_translations)
-                    self.meta.save_group(new_section, section_path)
+                    LOG.info('exporting new section from {}', section.content_filename)
+                    new_section = self.zendesk.create_section(category_id, section.translations)
+                    section.meta = new_section
                     section_id = new_section['id']
-                articles = self._translated_articles(section_path)
-                for article_id, article_translations in articles.items():
+                articles = section.children
+                for article in articles:
+                    article_id = article.zendesk_id
                     if article_id:
-                        LOG.info('exporting article {} from {}', article_id, section_path)
-                        self.zendesk.update_article(article_id, article_translations)
+                        LOG.info('exporting article {} from {}', article.name, article.path)
+                        self.zendesk.update_article(article)
                     else:
-                        # TODO add real article name
-                        LOG.info('exporting new article from {}', section_path)
-                        new_article = self.zendesk.create_article(section_id, article_translations)
-                        self.meta.save_article(new_article, section_path)
-
-    def _translated_group(self, path):
-        result = []
-        files = [f for f in os.listdir(path)]
-        group = self.repo.get_translated_group(files)
-        group_id = self.meta.group_id(path)
-        for locale, filename in group.items():
-            with open(os.path.join(path, filename), 'r') as file:
-                file_data = json.load(file)
-                translation = {
-                    'title': file_data['name'],
-                    'body': file_data['description'],
-                    'locale': locale
-                }
-                result.append(translation)
-        LOG.debug('translations for group {} are {}', path, result)
-        return group_id, result
-
-    def _translated_articles(self, path):
-        result = {}
-        files = [f for f in os.listdir(path)]
-        articles = self.repo.get_translated_articles(files)
-        for article_name, article_details in articles.items():
-            article_id = self.meta.article_id(path, article_name)
-            for locale, article_filename in article_details.items():
-                article_translated_name = self.repo.article_translated_name(path, article_filename)
-                with open(os.path.join(path, article_filename), 'r') as file:
-                    article_body = file.read()
-                    translation = {
-                        'title': article_translated_name,
-                        'body': markdown.markdown(article_body),
-                        'locale': locale
-                    }
-                    translations = result.get(article_id, [])
-                    translations.append(translation)
-                    result[article_id] = translations
-            LOG.debug('translations for article {} are {}', article_name, result[article_id])
-        return result
+                        LOG.info('exporting new article {} from {}', article.name, article.path)
+                        new_article = self.zendesk.create_article(section_id, article.translations)
+                        article.meta = new_article
 
 
 class TranslateTask(object):
@@ -618,14 +578,11 @@ class TranslateTask(object):
     Upload content to WebTranslateIt. Should only be used to upload the initial conent in the default language after
     it has been imported from Zendesk.
     """
-    TRANSLATE_EXTENSIONS = ['.md']
 
     def __init__(self, options):
         super().__init__()
         self.options = options
         self.translate = WebTranslateItClient(options)
-        self.meta = MetaRepository()
-        self.repo = ContentRepository()
 
     def execute(self):
         LOG.info('executing translate task...')
@@ -633,12 +590,17 @@ class TranslateTask(object):
         for filepath in os.listdir(root):
             category_path = os.path.join(root, filepath)
             if os.path.isdir(category_path):
-                category = Group.from_path(category_path)
-                category.translate()
+                category = Group(category_path)
+                LOG.info('upload {} for transaltion', category.content_filename)
+                self.translate.create(category.content_filename)
                 for section in category.children:
-                    section.translate()
+                    LOG.info('upload {} for transaltion', section.content_filename)
+                    self.translate.create(section.content_filename)
                     for article in section.children:
-                        article.translate()
+                        LOG.info('upload {} for transaltion', article.content_filename)
+                        self.translate.create(article.content_filename)
+                        LOG.info('upload {} for transaltion', article.body_filename)
+                        self.translate.create(article.body_filename)
 
 
 class RemoveTask(object):
