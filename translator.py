@@ -14,6 +14,18 @@ import markdown
 import requests
 import shutil
 import configparser
+import unicodedata
+import re
+
+
+def slugify(value):
+    """
+    Converts to lowercase, removes non-word characters (alphanumerics and underscores) and converts spaces to
+    hyphens. Also strips leading and trailing whitespace.
+    """
+    value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub('[^\w\s-]', '', value).strip().lower()
+    return re.sub('[-\s]+', '-', value)
 
 
 def to_json(data):
@@ -150,7 +162,7 @@ class Group(object):
 
     @staticmethod
     def from_zendesk(parent_path, zendesk_group, parent=None):
-        name = zendesk_group['name']
+        name = slugify(zendesk_group['name'])
         path = os.path.join(parent_path, name)
         group = Group(path, parent)
         group.meta = zendesk_group
@@ -200,7 +212,6 @@ class Article(object):
 
     @content.setter
     def content(self, value):
-        self.name = value['name']
         self.content_repo.save(self.content_filename, to_json(value))
 
     @property
@@ -266,7 +277,7 @@ class Article(object):
 
     @staticmethod
     def from_zendesk(section_path, zendesk_article):
-        name = zendesk_article['name']
+        name = slugify(zendesk_article['name'])
         article = Article(section_path, name)
         article.meta = zendesk_article
         article.content = {'name': zendesk_article['name']}
