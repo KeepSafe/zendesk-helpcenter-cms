@@ -7,12 +7,12 @@ FLAGS=
 
 
 update:
-	$(PYTHON) ./setup.py develop
+	$(PYTHON) ./setup.py install
 
 install:
 	python3 -m venv venv
 
-	$(PYTHON) ./setup.py develop
+	$(PYTHON) ./setup.py install
 
 dev:
 	$(PIP) install flake8 nose coverage

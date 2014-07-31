@@ -64,7 +64,7 @@ class MetaRepository(object):
         return os.path.join(path, MetaRepository.META_GROUP_FILENAME)
 
     def _article_filepath(self, path, article_name):
-        return os.path.join(path, MetaRepository.META_ARTICLE_FILENAME.format(article_name))
+        return os.path.join(path, slugify(MetaRepository.META_ARTICLE_FILENAME.format(article_name)))
 
     def _read_group(self, path):
         filepath = self._group_filepath(path)
