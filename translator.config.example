@@ -1,5 +1,5 @@
 # Configuration file for the translator script
-[default]
+[DEFAULT]
 
 # Root folder to hold translations
 #root_folder = help_center_content

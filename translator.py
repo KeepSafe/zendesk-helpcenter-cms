@@ -9,10 +9,12 @@
 import argparse
 import os
 import configparser
+import functools
 
 import utils
 import services
 import items
+import exceptions
 
 LOG = utils.Logger()
 
@@ -51,9 +53,7 @@ class ImportTask(object):
         zendesk_articles = self.zendesk.fetch_articles(section.zendesk_id)
         for zendesk_article in zendesk_articles:
             LOG.debug('creating article {}', zendesk_article['name'])
-            article = items.Article.from_zendesk(section.path, zendesk_article)
-            #TODO uncomment for attachment saving
-            #self.zendesk.download_article_attachments(article.zendesk_id, article.attachments_path)
+            items.Article.from_zendesk(section.path, zendesk_article)
 
 
 class ExportTask(object):
@@ -289,33 +289,49 @@ tasks = {
 
 def parse_args():
     parser = argparse.ArgumentParser()
+
+    # Subparsers
+    subparsers = parser.add_subparsers(help='Task to be performed.', dest='task')
+    task_parsers = {task_parser: subparsers.add_parser(task_parser) for task_parser in tasks}
+
+    # Global settings
     parser.add_argument('-v', '--verbose', help='Increase output verbosity',
                         action='store_true')
     parser.add_argument('-r', '--root',
                         help='items.Article\'s root folder',
                         default='help_center_content')
-    subparsers = parser.add_subparsers(help='Task to be performed.', dest='task')
 
-    task_parsers = {task_parser: subparsers.add_parser(task_parser) for task_parser in tasks}
-
+    # Task subparser settings
     task_parsers['remove'].add_argument('path', help='Set path for removing an item')
-
     task_parsers['move'].add_argument('source', help='Set source section/article')
     task_parsers['move'].add_argument('destination', help='Set destination category/section')
 
     return parser.parse_args()
 
 
-def parse_options():
+def parse_config():
+
     config = configparser.ConfigParser()
     config.read('translator.config')
 
+    # Use default section while checking for options
+    has_option = functools.partial(config.has_option, config.default_section)
+
+    missing_property_msg = 'there is no "{}" defined in the configuration. please check the docs for help'
+    config_options = ['root_folder', 'company_name', 'user', 'password', 'webtranslateit_api_key']
+
+    for option in config_options:
+        if not has_option(option):
+            raise exceptions.ConfigError(missing_property_msg.format(option))
+
+    default_config = config[config.default_section]
+
     return {
-        'root_folder': config['default']['root_folder'],
-        'company_name': config['default']['company_name'],
-        'user': config['default']['user'],
-        'password': config['default']['password'],
-        'webtranslateit_api_key': config['default']['webtranslateit_api_key']
+        'root_folder': default_config['root_folder'],
+        'company_name': default_config['company_name'],
+        'user': default_config['user'],
+        'password': default_config['password'],
+        'webtranslateit_api_key': default_config['webtranslateit_api_key']
     }
 
 
@@ -331,7 +347,7 @@ def resolve_args(args, options):
 
 def main():
     args = parse_args()
-    options = parse_options()
+    options = parse_config()
     task, options = resolve_args(args, options)
     task.execute()
 

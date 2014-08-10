@@ -265,17 +265,6 @@ class ZendeskService(object):
         requests.put(url, data=json.dumps(data), auth=(self.options['user'], self.options['password']),
                      headers={'Content-type': 'application/json'})
 
-    def download_article_attachments(self, article_id, attachments_path):
-        url = self.url_for('articles/{}/attachments.json'.format(article_id))
-        response = requests.get(url, auth=(self.options['user'], self.options['password']))
-        attachments = response.json()
-        for attachment in attachments['article_attachments']:
-            content_url = attachment['content_url']
-            response = requests.get(content_url, stream=True)
-            with open(os.path.join(attachments_path, attachment['file_name']), 'w') as file:
-                for chunk in response.iter_content(1024):
-                    file.write(chunk)
-
 
 class WebTranslateItService(object):
 
