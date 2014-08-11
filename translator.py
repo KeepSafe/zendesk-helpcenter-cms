@@ -25,7 +25,7 @@ class AbstractTask(object):
 
     def __init__(self, options=None):
         super().__init__()
-        self.options = options or []
+        self.options = options or {}
         self.options['root_folder'] = os.getcwd()
 
     def _validate_options(self, options, required_params=None):
@@ -71,6 +71,7 @@ class ImportTask(AbstractTask):
         zendesk_articles = self.zendesk.fetch_articles(section.zendesk_id)
         for zendesk_article in zendesk_articles:
             LOG.debug('creating article {}', zendesk_article['name'])
+            print(zendesk_article)
             items.Article.from_zendesk(section.path, zendesk_article)
 
 

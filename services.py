@@ -281,7 +281,7 @@ class WebTranslateItService(object):
 
     def create(self, filepath):
         with open(filepath, 'r') as file:
-            normalized_filepath = filepath.replace('\\', '/')
+            normalized_filepath = os.path.relpath(filepath).replace('\\', '/')
             url = self.url_for('files')
             LOG.debug('upload file {} for transaltion to {}', normalized_filepath, url)
             response = requests.post(url,

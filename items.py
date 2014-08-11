@@ -8,6 +8,7 @@ import services
 class AbstractItem(object):
 
     def __init__(self, path):
+        os.makedirs(path, exist_ok=True)
         self.meta_repo = services.MetaService()
         self.content_repo = services.ContentService()
         self.path = path
@@ -57,19 +58,20 @@ class Group(AbstractItem):
 
     def __init__(self, path, parent=None):
         super().__init__(path)
-        os.makedirs(path, exist_ok=True)
         self.parent = parent
         self._content_filename = '__group__.json'
         self._meta_filename = '.group.meta'
 
     def _articles(self):
-        filepaths = [filepath for filepath in os.listdir(self.path)
-                     if os.path.isfile(os.path.join(self.path, filepath))]
+        locale = utils.DEFAULT_LOCALE
+        article_dir = os.path.join(self.path, locale)
+        filepaths = [filepath for filepath in os.listdir(article_dir)
+                     if os.path.isfile(os.path.join(article_dir, filepath))]
         article_names = filter(lambda a: a.endswith('.md'), filepaths)
         article_names_bits = map(lambda a: a.split('.'), article_names)
         article_names_bits = filter(lambda a: len(a) == 2, article_names_bits)
         article_names = map(lambda a: a[0], article_names_bits)
-        articles = [Article(self.path, article_name) for article_name in article_names]
+        articles = [Article(article_dir, article_name) for article_name in article_names]
         return articles
 
     def _subgroups(self):
@@ -117,8 +119,8 @@ class Group(AbstractItem):
 
     @staticmethod
     def from_zendesk(parent_path, zendesk_group, parent=None):
-        name = utils.slugify(zendesk_group['name'])
-        path = os.path.join(parent_path, name)
+        name = zendesk_group['name']
+        path = os.path.join(parent_path, utils.slugify(name))
         group = Group(path, parent)
         group.meta = zendesk_group
         group.content = {'name': name, 'description': zendesk_group['description']}
@@ -196,9 +198,11 @@ class Article(AbstractItem):
 
     @staticmethod
     def from_zendesk(section_path, zendesk_article):
-        name = utils.slugify(zendesk_article['name'])
-        article = Article(section_path, name)
+        name = zendesk_article['name']
+        locale = zendesk_article['locale']
+        article_path = os.path.join(section_path, locale)
+        article = Article(article_path, utils.slugify(name))
         article.meta = zendesk_article
-        article.content = {'name': zendesk_article['name']}
+        article.content = {'name': name}
         article.body = html2text.html2text(zendesk_article['body'])
         return article
