@@ -1,9 +1,6 @@
 # Configuration file for the translator script
 [DEFAULT]
 
-# Root folder to hold translations
-root_folder = help_center_content
-
 # Zendesk company name
 company_name = testingzendesk12
 

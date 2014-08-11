@@ -9,7 +9,6 @@
 import argparse
 import os
 import configparser
-import functools
 
 import utils
 import services
@@ -27,6 +26,7 @@ class AbstractTask(object):
     def __init__(self, options=None):
         super().__init__()
         self.options = options or []
+        self.options['root_folder'] = os.getcwd()
 
     def _validate_options(self, options, required_params=None):
         missing_property_msg = 'there is no "{}" defined in the configuration. please check the docs for help'
