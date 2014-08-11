@@ -17,9 +17,27 @@ import items
 import exceptions
 
 LOG = utils.Logger()
+CONFIG_FILE = 'translator.config'
+ZENDESK_REQUIRED_CONFIG = ['company_name', 'user', 'password']
+WEBTRANSLATEIT_REQUIRED_CONFIG = ['webtranslateit_api_key']
 
 
-class ImportTask(object):
+class AbstractTask(object):
+
+    def __init__(self, options=None):
+        super().__init__()
+        self.options = options or []
+
+    def _validate_options(self, options, required_params=None):
+        missing_property_msg = 'there is no "{}" defined in the configuration. please check the docs for help'
+        required_params = required_params or []
+
+        for param in required_params:
+            if param not in options:
+                raise exceptions.ConfigError(missing_property_msg.format(param))
+
+
+class ImportTask(AbstractTask):
 
     """
     Imports an existing content from Zendesk. This should only be used to initialize the project. Later on edits
@@ -27,9 +45,9 @@ class ImportTask(object):
     """
 
     def __init__(self, options):
-        super().__init__()
-        self.options = options
+        super().__init__(options)
         self.zendesk = services.ZendeskService(options)
+        self._validate_options(options, ZENDESK_REQUIRED_CONFIG)
 
     def execute(self):
         LOG.info('executing import task...')
@@ -56,7 +74,7 @@ class ImportTask(object):
             items.Article.from_zendesk(section.path, zendesk_article)
 
 
-class ExportTask(object):
+class ExportTask(AbstractTask):
 
     """
     Exports content to Zendesk. It will update everything, creating whats missing along the way. Every time this task
@@ -64,9 +82,9 @@ class ExportTask(object):
     """
 
     def __init__(self, options):
-        super().__init__()
-        self.options = options
+        super().__init__(options)
         self.zendesk = services.ZendeskService(options)
+        self._validate_options(options, ZENDESK_REQUIRED_CONFIG)
 
     def execute(self):
         LOG.info('executing export task...')
@@ -108,7 +126,7 @@ class ExportTask(object):
                         article.meta = new_article
 
 
-class TranslateTask(object):
+class TranslateTask(AbstractTask):
 
     """
     Upload content to WebTranslateIt. Should only be used to upload the initial conent in the default language after
@@ -116,9 +134,9 @@ class TranslateTask(object):
     """
 
     def __init__(self, options):
-        super().__init__()
-        self.options = options
+        super().__init__(options)
         self.translate = services.WebTranslateItService(options)
+        self._validate_options(options, WEBTRANSLATEIT_REQUIRED_CONFIG)
 
     def execute(self):
         LOG.info('executing translate task...')
@@ -148,17 +166,17 @@ class TranslateTask(object):
                         article.meta = article_meta
 
 
-class RemoveTask(object):
+class RemoveTask(AbstractTask):
 
     """
     Removes articles, sections and categories.
     """
 
     def __init__(self, options):
-        super().__init__()
-        self.options = options
+        super().__init__(options)
         self.zendesk = services.ZendeskService(options)
         self.translate = services.WebTranslateItService(options)
+        self._validate_options(options, ZENDESK_REQUIRED_CONFIG + WEBTRANSLATEIT_REQUIRED_CONFIG)
 
     def execute(self):
         LOG.info('executing delete task...')
@@ -197,17 +215,17 @@ class RemoveTask(object):
         article.remove()
 
 
-class MoveTask(object):
+class MoveTask(AbstractTask):
 
     """
     Move article to a different section/category
     """
 
     def __init__(self, options):
-        super().__init__()
-        self.options = options
+        super().__init__(options)
         self.zendesk = services.ZendeskService(options)
         self.translate = services.WebTranslateItService(options)
+        self._validate_options(options, ZENDESK_REQUIRED_CONFIG + WEBTRANSLATEIT_REQUIRED_CONFIG)
 
     def execute(self):
         source = self.options['source']
@@ -253,15 +271,11 @@ class MoveTask(object):
                              .format(source))
 
 
-class DoctorTask(object):
+class DoctorTask(AbstractTask):
 
     """
     Verifies if everything is valid and creates missing files.
     """
-
-    def __init__(self, options):
-        super().__init__()
-        self.options = options
 
     def execute(self):
         LOG.info('executing doctor task...')
@@ -277,13 +291,64 @@ class DoctorTask(object):
                     article.fixme()
 
 
+class ConfigTask(AbstractTask):
+
+    """
+    Creates cofig file in the current directory by asking a user to provide the data.
+    """
+
+    def _read_existing_config(self):
+        if not os.path.exists(CONFIG_FILE):
+            return {}
+
+        print('There is a config alread present, press ENTER to accept already existing value')
+        config = configparser.ConfigParser()
+        config.read(CONFIG_FILE)
+        return dict(config[config.default_section])
+
+    def _read_config_from_input(self, default_config):
+        if default_config:
+            default_company_name = default_config.get('company_name', '')
+            company_name = input('Zendesk\'s company name ({}):'.format(default_company_name)) or default_company_name
+            default_user = default_config.get('user', '')
+            user = input('Zendesk\'s user name ({}):'.format(default_user)) or default_user
+            default_password = default_config.get('password', '')
+            password = input('Zendesk\'s password ({}):'.format(default_password)) or default_password
+            default_api_key = default_config.get('webtranslateit_api_key', '')
+            webtranslateit_api_key = input(
+                'WebTranslateIt private API key ({}):'.format(default_api_key)) or default_api_key
+        else:
+            company_name = input('Zendesk\'s company name:')
+            user = input('Zendesk\'s user name:')
+            password = input('Zendesk\'s password:')
+            webtranslateit_api_key = input('WebTranslateIt private API key:')
+
+        return {
+            'company_name': company_name,
+            'user': user,
+            'password': password,
+            'webtranslateit_api_key': webtranslateit_api_key
+        }
+
+    def execute(self):
+        existing_config = self._read_existing_config()
+        user_config = self._read_config_from_input(existing_config)
+
+        config = configparser.ConfigParser()
+        config[config.default_section] = user_config
+
+        with open(CONFIG_FILE, 'w') as config_file:
+            config.write(config_file)
+
+
 tasks = {
     'import': ImportTask,
     'export': ExportTask,
     'translate': TranslateTask,
     'remove': RemoveTask,
     'move': MoveTask,
-    'doctor': DoctorTask
+    'doctor': DoctorTask,
+    'config': ConfigTask
 }
 
 
@@ -310,29 +375,9 @@ def parse_args():
 
 
 def parse_config():
-
     config = configparser.ConfigParser()
-    config.read('translator.config')
-
-    # Use default section while checking for options
-    has_option = functools.partial(config.has_option, config.default_section)
-
-    missing_property_msg = 'there is no "{}" defined in the configuration. please check the docs for help'
-    config_options = ['root_folder', 'company_name', 'user', 'password', 'webtranslateit_api_key']
-
-    for option in config_options:
-        if not has_option(option):
-            raise exceptions.ConfigError(missing_property_msg.format(option))
-
-    default_config = config[config.default_section]
-
-    return {
-        'root_folder': default_config['root_folder'],
-        'company_name': default_config['company_name'],
-        'user': default_config['user'],
-        'password': default_config['password'],
-        'webtranslateit_api_key': default_config['webtranslateit_api_key']
-    }
+    config.read(CONFIG_FILE)
+    return dict(config[config.default_section])
 
 
 def resolve_args(args, options):

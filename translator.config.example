@@ -2,14 +2,14 @@
 [DEFAULT]
 
 # Root folder to hold translations
-#root_folder = help_center_content
+root_folder = help_center_content
 
 # Zendesk company name
-#company_name = testingzendesk12
+company_name = testingzendesk12
 
 # Zendesk user name and password
-#user = zendesk@maildrop.cc
-#password = 123zendesk
+user = zendesk@maildrop.cc
+password = 123zendesk
 
 # WebTranslateIt API key
-#webtranslateit_api_key = pDLsTA3XPlO0rfRbTFroAw
+webtranslateit_api_key = pDLsTA3XPlO0rfRbTFroAw
