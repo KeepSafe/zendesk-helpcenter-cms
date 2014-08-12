@@ -71,7 +71,6 @@ class ImportTask(AbstractTask):
         zendesk_articles = self.zendesk.fetch_articles(section.zendesk_id)
         for zendesk_article in zendesk_articles:
             LOG.debug('creating article {}', zendesk_article['name'])
-            print(zendesk_article)
             items.Article.from_zendesk(section.path, zendesk_article)
 
 

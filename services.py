@@ -2,6 +2,7 @@ import os
 import markdown
 import requests
 import shutil
+import hashlib
 import json
 import utils
 
@@ -81,7 +82,7 @@ class ZendeskService(object):
         return ZendeskService.DEFAULT_URL.format(self.options['company_name'], path)
 
     def _fetch(self, url):
-        response = requests.get(url)
+        response = requests.get(url, auth=(self.options['user'], self.options['password']))
         if response.status_code != 200:
             raise Exception('there was a problem fetching data from {}. status was {} and message {}'
                             .format(url, response.status_code, response.text))
@@ -128,9 +129,9 @@ class ZendeskService(object):
             with open(filepath, 'r') as file:
                 file_data = json.load(file)
                 translation = {
-                    'title': file_data['name'],
-                    'body': file_data['description'],
-                    'locale': locale
+                    'title': file_data['name'] or '',
+                    'body': file_data['description'] or '',
+                    'locale': locale or utils.DEFAULT_LOCALE
                 }
                 result.append(translation)
         LOG.debug('translations for group {} are {}', filepath, result)
@@ -146,9 +147,9 @@ class ZendeskService(object):
                 file_data = file.read()
                 article_body = markdown.markdown(file_data)
             translation = {
-                'title': article_name,
-                'body': article_body,
-                'locale': locale
+                'title': article_name or '',
+                'body': article_body or '',
+                'locale': locale or utils.DEFAULT_LOCALE
             }
             result.append(translation)
         LOG.debug('translations for article {} are {}', content_filepath, result)
@@ -165,8 +166,11 @@ class ZendeskService(object):
                 self._send_translate_request(create_url, {'translation': translation}, requests.post)
             else:
                 update_url = self.url_for(url.format(item_id, '/' + locale))
-                LOG.debug('updating translation at {}', update_url)
-                self._send_translate_request(update_url, translation, requests.put)
+                if self._has_content_changed(update_url, translation):
+                    LOG.debug('updating translation at {}', update_url)
+                    self._send_translate_request(update_url, translation, requests.put)
+                else:
+                    LOG.debug('skipping as nothing changed for translation {}', update_url)
 
     def _send_translate_request(self, url, translation_data, request_fn):
         response = request_fn(url, data=json.dumps(translation_data),
@@ -177,6 +181,16 @@ class ZendeskService(object):
                             .format(url, response.status_code, response.text))
         response_data = response.json()
         return response_data['translation']
+
+    def _has_content_changed(self, url, translation):
+        content = self._fetch(url)['translation']
+        for key in ['body', 'title']:
+            content_body = content[key] or ''
+            content_hash = hashlib.md5(content_body.encode('utf-8'))
+            translation_hash = hashlib.md5(translation[key].encode('utf-8'))
+            if content_hash.hexdigest() != translation_hash.hexdigest():
+                return True
+        return False
 
     def _missing_locales(self, url):
         response = requests.get(url, auth=(self.options['user'], self.options['password']),
