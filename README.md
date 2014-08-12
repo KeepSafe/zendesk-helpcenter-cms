@@ -6,47 +6,46 @@ Python script for zendesk helpcenter translations.
 ## Requirements
 
 1. Python 3.+
-2. WebTranslateIt APIKey
-3. Zendesk Account
+2. [WebTranslateIt](https://webtranslateit.com) APIKey
+3. [Zendesk](www.zendesk.com) Account
 4. [wti](https://webtranslateit.com/en/tour/external_tools) command line tool from WebTranslateIt
 
 ## Installation
 
-1. `virtualenv env`
-2. `source env/bin/activate`
-3. `pip install -r requirements.txt`
-
-**Important:** If you are using OSX make sure the virtuaenv uses python 3. You can force virtualenv to use python 3 by running `virtualenv --python=/opt/local/bin/python3 env` instead of `virtualenv env`
-
-## Configuration
-
-    cp translator.default translator.config
-    
-Copy the default config file with the command above to the `translator.config`, open it and enter you credentials.
+1. `pip install zendesk-translator`
 
 ## Usage
 
-### Initial setup
+Below is a description of all available commands. You can also type `zendesk-translator -h` and `zedesk-translator [command] -h` to see help message in the console.
 
-Assuming there already articles in the Zendesk help centre in the default language, we start by importing them to local folder:
+### Configuration
 
-`python translate.py import`
+In the directory you want to have your Zendesk articles type `zendesk-translator config`. You will be ask for information required by the script. the information will be saved in `.zendesk-translator.config` file. If you need to override some values just run `zendesk-translator config` again. If the file exists it will offer existing values as defaults. You can also manually create/override values in the file if you wish to do so but make sure the syntax is correct.
 
-This will create a directory structure like:
+The current working directory is used as the root for the script. This means the categories will be created at that level.
+
+### Importing existing articles
+
+If you already have some articles in Zendesk you can import them with `zendesk-translator import` command.
+
+It is possible to create the initial setup by hand but we recommend creating a sample article in Zendesk (if there are no articles there yet) and using the `import` command 
+
+This will create a directory structure similar to the one below:
 
 ```
-root/
-	category/
+category/
+	__group__.json
+	.group.meta
+	section/
 		__group__.json
-		__group__.meta
-		section/
-			__group__.json
-			__group__.meta
-			article.md
-			article.meta
+		.group.meta
+		en-us/
+			title.md
+			title.json
+			.article_title.meta
 ```
 
-### Uploading to WebTranslateIt
+### Uploading articles to WebTranslateIt
 
 Since we have the articles in Markdown in the main language we can now upload them to WebTranslateIt for translation. You can either use [wti](https://webtranslateit.com/en/tour/external_tools) command line tool provided by WebTranslateIt or simply run:
 
@@ -62,24 +61,25 @@ When the translations are ready run:
 
 This will download all translations to the local folder with existing articles. To upload everything to Zendesk run
 
-`python translator.py export`
+`zendesk-translator export`
 
-This will upload the **entire** structure to Zendesk updating whatever is already there.
+This will upload the **entire** structure to Zendesk updating whatever is already there if it changed (this is checked by comparing md5 hashes of the title and body/description)
 
 ## Structure
 
 Going back to our sample folder structure:
 
 ```
-root/
-	category/
+category/
+	__group__.json
+	.group.meta
+	section/
 		__group__.json
-		__group__.meta
-		section/
-			__group__.json
-			__group__.meta
-			article.md
-			article.meta
+		.group.meta
+		en-us/
+			title.md
+			title.json
+			.article_title.meta
 ```
 
 There are 3 kinds of objects: categories, sections and articles.
@@ -95,9 +95,11 @@ A category is a top level group, it holds sections. Each category had a `__group
 }
 ```
 
-This file will be translated giving you variants like `__group__.fr.json` for different languages. To change category name or description simply edit this file. **This file has to be created when you create a new category. You need to do it by hand**
+This file will be translated giving you variants like `__group__.fr.json` for different languages. To change category name or description simply edit this file.
 
-Once a category is in Zendesk help centre it will also have `__group__.meta` file containing the information from Zendesk. This file should not be edited and is for internal use only by the script.
+The file needs to be created when you add a new category, either by hand or by running `zendesk-translator doctor`.
+
+Once a category is in Zendesk help centre it will also have `.group.meta` file containing the information from Zendesk. This file should not be edited and is for internal use only.
 
 ### Sections
 
@@ -109,18 +111,25 @@ Each article has a separate Markdown file with the name being the article's name
 
 Once an article is in Zendesk it will also have a meta file. This file stores information from Zendesk and is for internal use by the script.
 
-## Creating new items
+## Commands
+
+### Creating new items
 
 ```
-python translator.py add -p "path/to/article.md"
+zendesk-translator add "path/to/article.md"
 ```
 
-It will **only** create any missing files. It won't upload the content anywhere. If you want to upload the content to Zendesk use `export` task. If you want to upload the content to WebTranslateIt use `wti`
+It will create any necessary files. It won't upload the content anywhere. If you want to upload the content to Zendesk use `export` task. If you want to upload the content to WebTranslateIt use `wti`
 
-## Removing items
+### Removing items
 
 ```
-python translator.py remove -p "path/to/article.md"
+zendesk-translator remove  "path/to/article.md"
+zendesk-translator remove "category"
 ```
 
-It will remove files locally and from Zendesk and WebTranslateIt. It will not remove categories/sections even if empty, it has to be done manually.
+It will remove files locally and from Zendesk and WebTranslateIt. It will not remove categories/sections together with articles even if they are empty, it has to be done separately from removing articles. Removing category/section will remove everything in it.
+
+### Fixing missing files
+
+If you want you can create categories/sections/articles by hand. Instead of creating all necessary files you can create folders for categories/sections and the  markdown file for the article. To create missing files run `zendesk-translator doctor`. It will create files with default names (directory/)
