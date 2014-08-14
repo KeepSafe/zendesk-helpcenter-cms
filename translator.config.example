@@ -4,9 +4,9 @@
 # Zendesk company name
 company_name = testingzendesk12
 
-# Zendesk user name and password
-user = zendesk@maildrop.cc
-password = 123zendesk
+# Zendesk user name and password (or token)
+user = zendesk@maildrop.cc/token
+password = i8wZBLnQLjbPVS5darEBPpVOChX99R1IJEFJUlBJ
 
 # WebTranslateIt API key
 webtranslateit_api_key = LEkb4IJgDsV8tHp3qRD2pQ

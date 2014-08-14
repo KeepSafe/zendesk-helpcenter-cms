@@ -189,8 +189,8 @@ class ZendeskService(object):
                               auth=(self.options['user'], self.options['password']),
                               headers={'Content-type': 'application/json'})
         if response.status_code not in [200, 201]:
-            raise Exception('there was a problem uploading translations at {}. status was {} and message {}'
-                            .format(url, response.status_code, response.text))
+            raise exceptions.ZendeskException('there was a problem uploading translations at {}. status was {} and message {}'
+                                              .format(url, response.status_code, response.text))
         response_data = response.json()
         return response_data['translation']
 
@@ -208,8 +208,8 @@ class ZendeskService(object):
         response = requests.get(url, auth=(self.options['user'], self.options['password']),
                                 headers={'Content-type': 'application/json'})
         if response.status_code != 200:
-            raise Exception('there was a problem fetching missng locales from {}. status was {} and message {}'
-                            .format(url, response.status_code, response.text))
+            raise exceptions.ZendeskException('there was a problem fetching missng locales from {}. status was {} and message {}'
+                                              .format(url, response.status_code, response.text))
         response_data = response.json()
         return response_data['locales']
 
@@ -217,8 +217,8 @@ class ZendeskService(object):
         response = requests.post(url, data=json.dumps(data), auth=(self.options['user'], self.options['password']),
                                  headers={'Content-type': 'application/json'})
         if response.status_code != 201:
-            raise Exception('there was a problem creating an item at {}. status was {} and message {}'
-                            .format(url, response.status_code, response.text))
+            raise exceptions.ZendeskException('there was a problem creating an item at {}. status was {} and message {}'
+                                              .format(url, response.status_code, response.text))
         return response.json()
 
     def create_category(self, translations):

@@ -24,6 +24,14 @@ In the directory you want to have your Zendesk articles type `zendesk-help-cms c
 
 The current working directory is used as the root for the script. This means the categories will be created at that level.
 
+#### Zendesk authentication
+
+There are two ways to authenticate with Zendesk. Either with user/password or with user/token. 
+
+For user/password the configuration is straightforward. Just provide the values in the configuration file.
+
+For user/token the configuration is similar but the user email has to end with `/token`. The password is the Zendesk token.
+
 ### Importing existing articles
 
 If you already have some articles in Zendesk you can import them with `zendesk-help-cms import` command.
