@@ -11,5 +11,8 @@ password = 123zendesk
 # WebTranslateIt API key
 webtranslateit_api_key = LEkb4IJgDsV8tHp3qRD2pQ
 
-# Image CDN root url
+# Image CDN root url (optional)
 image_cdn = 'http://my.cdn.io/images'
+
+# Disable article comments by default (optional) 0 - no, 1 - yes
+disable_article_comments = 1

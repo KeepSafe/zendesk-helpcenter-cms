@@ -5,6 +5,7 @@ import shutil
 import hashlib
 import json
 import utils
+import exceptions
 
 LOG = utils.Logger()
 
@@ -84,8 +85,8 @@ class ZendeskService(object):
     def _fetch(self, url):
         response = requests.get(url, auth=(self.options['user'], self.options['password']))
         if response.status_code != 200:
-            raise Exception('there was a problem fetching data from {}. status was {} and message {}'
-                            .format(url, response.status_code, response.text))
+            raise exceptions.ZendeskException('there was a problem fetching data from {}. status was {} and message {}'
+                                              .format(url, response.status_code, response.text))
         return response.json()
 
     def fetch_categories(self):
@@ -111,11 +112,21 @@ class ZendeskService(object):
         return self._update_group(section, 'sections/{}/translations{}.json', 'sections/{}/translations/missing.json')
 
     def update_article(self, article, cdn_path):
-        url = 'articles/{}/translations{}.json'
+        translation_url = 'articles/{}/translations{}.json'
         article_id = article.zendesk_id
+        self._disable_article_comments(article)
         translations = self._article_translations(article.translations, cdn_path)
         missing_url = self.url_for('articles/{}/translations/missing.json'.format(article_id))
-        return self._translate(url, missing_url, article_id, translations)
+        return self._translate(translation_url, missing_url, article_id, translations)
+
+    def _disable_article_comments(self, article):
+        article_id = article.zendesk_id
+        url = self.url_for('articles/{}.json'.format(article_id))
+        data = {
+            'comments_disabled': article.comments_disabled
+        }
+        requests.put(url, data=json.dumps(data), auth=(self.options['user'], self.options['password']),
+                     headers={'Content-type': 'application/json'})
 
     def _update_group(self, group, url, missing_url):
         group_id = group.zendesk_id
@@ -230,12 +241,13 @@ class ZendeskService(object):
         }
         return self._create(url, data)['section']
 
-    def create_article(self, section_id, cdn_path, translations):
+    def create_article(self, section_id, cdn_path, comments_disabled, translations):
         url = self.url_for('sections/{}/articles.json'.format(section_id))
         LOG.debug('creating new article at {}', url)
         data = {
             'article': {
-                'translations': self._article_translations(translations, cdn_path)
+                'translations': self._article_translations(translations, cdn_path),
+                'comments_disabled': comments_disabled
             }
         }
         return self._create(url, data)['article']

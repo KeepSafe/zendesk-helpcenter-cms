@@ -41,7 +41,7 @@ class AbstractItem(object):
 
     @property
     def zendesk_id(self):
-        data = self.meta_repo.read(self.meta_filename)
+        data = self.meta
         if data:
             return data.get(AbstractItem.ZENDESK_KEY)
         else:
@@ -49,11 +49,19 @@ class AbstractItem(object):
 
     @property
     def translate_ids(self):
-        data = self.meta_repo.read(self.meta_filename)
+        data = self.meta
         if data:
             return data.get(AbstractItem.TRANSLATE_KEY)
         else:
             return []
+
+    @property
+    def comments_disabled(self):
+        data = self.meta
+        if data:
+            return data.get('comments_disabled', False)
+        else:
+            return False
 
     def fixme(self, content):
         os.makedirs(self.path, exist_ok=True)

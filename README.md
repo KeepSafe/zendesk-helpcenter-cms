@@ -68,6 +68,8 @@ This will upload the **entire** structure to Zendesk updating whatever is alread
 **Important: ** 
 *For uploading images use `![Alt name]($IMAGE_ROOT/images/image.png)`. The `IMAGE_ROOT` will be replaced by `image_cdn` from the configuration.
 
+To disable comments in article you need to edit the meta file `.article-[article_name].meta` and edit `comments_disabled` filed.
+
 ## Structure
 
 Going back to our sample folder structure:

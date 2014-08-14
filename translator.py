@@ -102,7 +102,6 @@ class ExportTask(AbstractTask):
                 new_category = self.zendesk.create_category(category.translations)
                 category.meta = new_category
                 category_id = new_category['id']
-
             sections = category.children
             for section in sections:
                 section_id = section.zendesk_id
@@ -123,7 +122,10 @@ class ExportTask(AbstractTask):
                     else:
                         LOG.info('exporting new article {} from {}', article.name, article.path)
                         new_article = self.zendesk.create_article(
-                            section_id, self.options['image_cdn'], article.translations)
+                            section_id,
+                            self.options['image_cdn'],
+                            self.options['disable_article_comments'],
+                            article.translations)
                         article.meta = new_article
 
 
@@ -318,21 +320,25 @@ class ConfigTask(AbstractTask):
             default_api_key = default_config.get('webtranslateit_api_key', '')
             webtranslateit_api_key = input(
                 'WebTranslateIt private API key ({}):'.format(default_api_key)) or default_api_key
-            default_image_cdn = default_config.get('webtranslateit_api_key', '')
+            default_image_cdn = default_config.get('image_cdn', '')
             image_cdn = input('CDN path for storing images ({}):'.format(default_image_cdn)) or default_image_cdn
+            default_disable_article_comments = default_config.get('disable_article_comments', '')
+            disable_article_comments = input('Disable article comments:') or default_disable_article_comments
         else:
             company_name = input('Zendesk\'s company name:')
             user = input('Zendesk\'s user name:')
             password = input('Zendesk\'s password:')
             webtranslateit_api_key = input('WebTranslateIt private API key:')
             image_cdn = input('CDN path for storing images:')
+            disable_article_comments = input('Disable article comments:')
 
         return {
             'company_name': company_name,
             'user': user,
             'password': password,
             'webtranslateit_api_key': webtranslateit_api_key,
-            'image_cdn': image_cdn
+            'image_cdn': image_cdn,
+            'disable_article_comments': disable_article_comments
         }
 
     def execute(self):
@@ -395,10 +401,18 @@ def resolve_args(args, options):
     return task, options
 
 
+def fix_defaults(options):
+    options['image_cdn'] = options.get('image_cdn', '')
+    options['disable_article_comments'] = bool(options.get('disable_article_comments', False))
+    return options
+
+
 def main():
     args = parse_args()
     options = parse_config()
+    fix_defaults(options)
     task, options = resolve_args(args, options)
+
     task.execute()
 
 
