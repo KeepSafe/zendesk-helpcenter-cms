@@ -142,7 +142,7 @@ class ZendeskService(object):
                 translation = {
                     'title': file_data['name'] or '',
                     'body': file_data['description'] or '',
-                    'locale': locale or utils.DEFAULT_LOCALE
+                    'locale': utils.to_zendesk_locale(locale or utils.DEFAULT_LOCALE)
                 }
                 result.append(translation)
         LOG.debug('translations for group {} are {}', filepath, result)
@@ -161,7 +161,7 @@ class ZendeskService(object):
             translation = {
                 'title': article_name or '',
                 'body': article_body or '',
-                'locale': locale or utils.DEFAULT_LOCALE
+                'locale': utils.to_zendesk_locale(locale or utils.DEFAULT_LOCALE)
             }
             result.append(translation)
         LOG.debug('translations for article {} are {}', content_filepath, result)
@@ -171,7 +171,7 @@ class ZendeskService(object):
         missing_locales = self._missing_locales(missing_url)
         LOG.debug('missing locales for {} are {}', item_id, missing_locales)
         for translation in translations:
-            locale = translation['locale']
+            locale = utils.to_zendesk_locale(translation['locale'])
             if locale in missing_locales:
                 create_url = self.url_for(url.format(item_id, ''))
                 LOG.debug('creating translation at {}', create_url)

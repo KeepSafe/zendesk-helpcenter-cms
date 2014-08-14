@@ -68,19 +68,6 @@ class AbstractItem(object):
         if not os.path.exists(self.content_filename):
             self.content = content
 
-    def _translations(self, filepath):
-        result = {}
-        master_name, master_ext = os.path.splitext(os.path.basename(filepath))
-        files = [file for file in os.listdir(self.path) if file.startswith(master_name) and file.endswith(master_ext)]
-        for file in files:
-            if file == os.path.basename(filepath):
-                result[utils.DEFAULT_LOCALE] = os.path.join(self.path, file)
-            else:
-                name, ext = os.path.splitext(file)
-                locale = name.split('.')[-1]
-                result[locale] = os.path.join(self.path, file)
-        return result
-
 
 class Group(AbstractItem):
 
@@ -116,7 +103,17 @@ class Group(AbstractItem):
 
     @property
     def translations(self):
-        return self._translations(self.content_filename)
+        result = {}
+        master_name, master_ext = os.path.splitext(os.path.basename(self.content_filename))
+        files = [file for file in os.listdir(self.path) if file.startswith(master_name) and file.endswith(master_ext)]
+        for file in files:
+            if file == os.path.basename(self.content_filename):
+                result[utils.DEFAULT_LOCALE] = os.path.join(self.path, file)
+            else:
+                name, ext = os.path.splitext(file)
+                locale = name.split('.')[-1]
+                result[locale] = os.path.join(self.path, file)
+        return result
 
     def fixme(self):
         super().fixme({'name': os.path.basename(self.path), 'description': ''})
@@ -158,10 +155,11 @@ class Article(AbstractItem):
         self.name = name
         self._content_filename = '{}.json'.format(self.name)
         self._meta_filename = '.article_{}.meta'.format(self.name)
+        self._body_filename = '{}.md'.format(self.name)
 
     @property
     def body_filename(self):
-        return os.path.join(self.path, '{}.md'.format(self.name))
+        return os.path.join(self.path, self._body_filename)
 
     @property
     def body(self):
@@ -177,9 +175,14 @@ class Article(AbstractItem):
 
     @property
     def translations(self):
-        body_translations = self._translations(self.body_filename)
-        content_translations = self._translations(self.content_filename)
+        body_translations = self._translations(self._body_filename)
+        content_translations = self._translations(self._content_filename)
         return {locale: [content, body_translations[locale]] for locale, content in content_translations.items()}
+
+    def _translations(self, filename):
+        section_path = os.path.dirname(self.path)
+        locales = [locale for locale in os.listdir(section_path) if os.path.isdir(os.path.join(section_path, locale))]
+        return {locale: os.path.join(section_path, locale, filename) for locale in locales}
 
     def remove(self):
         for locale, (content_filepath, body_filepath) in self.translations.items():
@@ -200,7 +203,7 @@ class Article(AbstractItem):
     @staticmethod
     def from_zendesk(section_path, zendesk_article):
         name = zendesk_article['name']
-        locale = zendesk_article['locale']
+        locale = utils.to_iso_locale(zendesk_article['locale'])
         article_path = os.path.join(section_path, locale)
         article = Article(article_path, utils.slugify(name))
         article.meta = zendesk_article
