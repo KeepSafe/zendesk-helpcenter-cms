@@ -6,6 +6,8 @@ import services
 
 
 class AbstractItem(object):
+    TRANSLATE_KEY = 'webtranslateit_ids'
+    ZENDESK_KEY = 'id'
 
     def __init__(self, path):
         os.makedirs(path, exist_ok=True)
@@ -41,7 +43,7 @@ class AbstractItem(object):
     def zendesk_id(self):
         data = self.meta_repo.read(self.meta_filename)
         if data:
-            return self.meta_repo.read(self.meta_filename).get('id')
+            return data.get(AbstractItem.ZENDESK_KEY)
         else:
             return None
 
@@ -49,9 +51,27 @@ class AbstractItem(object):
     def translate_ids(self):
         data = self.meta_repo.read(self.meta_filename)
         if data:
-            return self.meta_repo.read(self.meta_filename).get('webtranslateit_ids')
+            return data.get(AbstractItem.TRANSLATE_KEY)
         else:
             return []
+
+    def fixme(self, content):
+        os.makedirs(self.path, exist_ok=True)
+        if not os.path.exists(self.content_filename):
+            self.content = content
+
+    def _translations(self, filepath):
+        result = {}
+        master_name, master_ext = os.path.splitext(os.path.basename(filepath))
+        files = [file for file in os.listdir(self.path) if file.startswith(master_name) and file.endswith(master_ext)]
+        for file in files:
+            if file == os.path.basename(filepath):
+                result[utils.DEFAULT_LOCALE] = os.path.join(self.path, file)
+            else:
+                name, ext = os.path.splitext(file)
+                locale = name.split('.')[-1]
+                result[locale] = os.path.join(self.path, file)
+        return result
 
 
 class Group(AbstractItem):
@@ -88,22 +108,10 @@ class Group(AbstractItem):
 
     @property
     def translations(self):
-        result = {}
-        master_name, master_ext = os.path.splitext(os.path.basename(self.content_filename))
-        files = [file for file in os.listdir(self.path) if file.startswith(master_name) and file.endswith(master_ext)]
-        for file in files:
-            if file == os.path.basename(self.content_filename):
-                result[utils.DEFAULT_LOCALE] = os.path.join(self.path, file)
-            else:
-                name, ext = os.path.splitext(file)
-                locale = name.split('.')[-1]
-                result[locale] = os.path.join(self.path, file)
-        return result
+        return self._translations(self.content_filename)
 
     def fixme(self):
-        os.makedirs(self.path, exist_ok=True)
-        if not os.path.exists(self.content_filename):
-            self.content = {'name': os.path.basename(self.path), 'description': ''}
+        super().fixme({'name': os.path.basename(self.path), 'description': ''})
 
     def remove(self):
         for child in self.children:
@@ -161,8 +169,8 @@ class Article(AbstractItem):
 
     @property
     def translations(self):
-        body_translations = self._translations(self.content_filename)
-        content_translations = self._translations(self.body_filename)
+        body_translations = self._translations(self.body_filename)
+        content_translations = self._translations(self.content_filename)
         return {locale: [content, body_translations[locale]] for locale, content in content_translations.items()}
 
     def remove(self):
@@ -178,23 +186,8 @@ class Article(AbstractItem):
         self.meta_repo.move(self.meta_filename, group.path)
         self.path = group.path
 
-    def _translations(self, filepath):
-        result = {}
-        master_name, master_ext = os.path.splitext(os.path.basename(filepath))
-        files = [file for file in os.listdir(self.path) if file.startswith(master_name) and file.endswith(master_ext)]
-        for file in files:
-            if file == os.path.basename(filepath):
-                result[utils.DEFAULT_LOCALE] = os.path.join(self.path, file)
-            else:
-                name, ext = os.path.splitext(file)
-                locale = name.split('.')[-1]
-                result[locale] = os.path.join(self.path, file)
-        return result
-
     def fixme(self):
-        os.makedirs(self.path, exist_ok=True)
-        if not os.path.exists(self.content_filename):
-            self.content = {'name': self.name}
+        super().fixme({'name': self.name})
 
     @staticmethod
     def from_zendesk(section_path, zendesk_article):

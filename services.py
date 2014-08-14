@@ -139,7 +139,7 @@ class ZendeskService(object):
 
     def _article_translations(self, translations):
         result = []
-        for locale, (body_filepath, content_filepath) in translations.items():
+        for locale, (content_filepath, body_filepath) in translations.items():
             with open(content_filepath, 'r') as file:
                 file_data = json.load(file)
                 article_name = file_data['name']
