@@ -3,6 +3,7 @@ import json
 import re
 
 DEFAULT_LOCALE = 'en-us'
+IMAGE_CDN_PATTERN = r'(!\[.*?\]\()\$IMAGE_ROOT(.*?(?:\s?\".*?\")?\))'
 
 
 def slugify(value):
@@ -21,6 +22,11 @@ def to_json(data):
 
 def from_json(data):
     return json.loads(data)
+
+
+def convert_to_cdn_path(cdn_path, body):
+    body = re.sub(IMAGE_CDN_PATTERN, '\\1{}\\2'.format(cdn_path), body)
+    return body
 
 
 class Logger(object):

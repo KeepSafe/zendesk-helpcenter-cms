@@ -65,6 +65,9 @@ This will download all translations to the local folder with existing articles. 
 
 This will upload the **entire** structure to Zendesk updating whatever is already there if it changed (this is checked by comparing md5 hashes of the title and body/description)
 
+**Important: ** 
+*For uploading images use `![Alt name]($IMAGE_ROOT/images/image.png)`. The `IMAGE_ROOT` will be replaced by `image_cdn` from the configuration.
+
 ## Structure
 
 Going back to our sample folder structure:

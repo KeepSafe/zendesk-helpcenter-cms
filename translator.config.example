@@ -10,3 +10,6 @@ password = 123zendesk
 
 # WebTranslateIt API key
 webtranslateit_api_key = LEkb4IJgDsV8tHp3qRD2pQ
+
+# Image CDN root url
+image_cdn = 'http://my.cdn.io/images'

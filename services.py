@@ -110,10 +110,10 @@ class ZendeskService(object):
     def update_section(self, section):
         return self._update_group(section, 'sections/{}/translations{}.json', 'sections/{}/translations/missing.json')
 
-    def update_article(self, article):
+    def update_article(self, article, cdn_path):
         url = 'articles/{}/translations{}.json'
         article_id = article.zendesk_id
-        translations = self._article_translations(article.translations)
+        translations = self._article_translations(article.translations, cdn_path)
         missing_url = self.url_for('articles/{}/translations/missing.json'.format(article_id))
         return self._translate(url, missing_url, article_id, translations)
 
@@ -137,7 +137,7 @@ class ZendeskService(object):
         LOG.debug('translations for group {} are {}', filepath, result)
         return result
 
-    def _article_translations(self, translations):
+    def _article_translations(self, translations, cdn_path):
         result = []
         for locale, (content_filepath, body_filepath) in translations.items():
             with open(content_filepath, 'r') as file:
@@ -145,6 +145,7 @@ class ZendeskService(object):
                 article_name = file_data['name']
             with open(body_filepath, 'r') as file:
                 file_data = file.read()
+                file_data = utils.convert_to_cdn_path(cdn_path, file_data)
                 article_body = markdown.markdown(file_data)
             translation = {
                 'title': article_name or '',
@@ -229,12 +230,12 @@ class ZendeskService(object):
         }
         return self._create(url, data)['section']
 
-    def create_article(self, section_id, translations):
+    def create_article(self, section_id, cdn_path, translations):
         url = self.url_for('sections/{}/articles.json'.format(section_id))
         LOG.debug('creating new article at {}', url)
         data = {
             'article': {
-                'translations': self._article_translations(translations)
+                'translations': self._article_translations(translations, cdn_path)
             }
         }
         return self._create(url, data)['article']

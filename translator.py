@@ -119,10 +119,11 @@ class ExportTask(AbstractTask):
                     article_id = article.zendesk_id
                     if article_id:
                         LOG.info('exporting article {} from {}', article.name, article.path)
-                        self.zendesk.update_article(article)
+                        self.zendesk.update_article(article, self.options['image_cdn'])
                     else:
                         LOG.info('exporting new article {} from {}', article.name, article.path)
-                        new_article = self.zendesk.create_article(section_id, article.translations)
+                        new_article = self.zendesk.create_article(
+                            section_id, self.options['image_cdn'], article.translations)
                         article.meta = new_article
 
 
@@ -317,17 +318,21 @@ class ConfigTask(AbstractTask):
             default_api_key = default_config.get('webtranslateit_api_key', '')
             webtranslateit_api_key = input(
                 'WebTranslateIt private API key ({}):'.format(default_api_key)) or default_api_key
+            default_image_cdn = default_config.get('webtranslateit_api_key', '')
+            image_cdn = input('CDN path for storing images ({}):'.format(default_image_cdn)) or default_image_cdn
         else:
             company_name = input('Zendesk\'s company name:')
             user = input('Zendesk\'s user name:')
             password = input('Zendesk\'s password:')
             webtranslateit_api_key = input('WebTranslateIt private API key:')
+            image_cdn = input('CDN path for storing images:')
 
         return {
             'company_name': company_name,
             'user': user,
             'password': password,
-            'webtranslateit_api_key': webtranslateit_api_key
+            'webtranslateit_api_key': webtranslateit_api_key,
+            'image_cdn': image_cdn
         }
 
     def execute(self):
