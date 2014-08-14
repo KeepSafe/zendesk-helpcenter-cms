@@ -12,21 +12,21 @@ Python script for zendesk helpcenter translations.
 
 ## Installation
 
-1. `pip install zendesk-translator`
+1. `pip install zendesk-help-cms`
 
 ## Usage
 
-Below is a description of all available commands. You can also type `zendesk-translator -h` and `zedesk-translator [command] -h` to see help message in the console.
+Below is a description of all available commands. You can also type `zendesk-help-cms -h` and `zendesk-help-cms [command] -h` to see help message in the console.
 
 ### Configuration
 
-In the directory you want to have your Zendesk articles type `zendesk-translator config`. You will be ask for information required by the script. the information will be saved in `.zendesk-translator.config` file. If you need to override some values just run `zendesk-translator config` again. If the file exists it will offer existing values as defaults. You can also manually create/override values in the file if you wish to do so but make sure the syntax is correct.
+In the directory you want to have your Zendesk articles type `zendesk-help-cms config`. You will be ask for information required by the script. the information will be saved in `.zendesk-help-cms.config` file. If you need to override some values just run `zendesk-help-cms config` again. If the file exists it will offer existing values as defaults. You can also manually create/override values in the file if you wish to do so but make sure the syntax is correct.
 
 The current working directory is used as the root for the script. This means the categories will be created at that level.
 
 ### Importing existing articles
 
-If you already have some articles in Zendesk you can import them with `zendesk-translator import` command.
+If you already have some articles in Zendesk you can import them with `zendesk-help-cms import` command.
 
 It is possible to create the initial setup by hand but we recommend creating a sample article in Zendesk (if there are no articles there yet) and using the `import` command 
 
@@ -49,7 +49,7 @@ category/
 
 Since we have the articles in Markdown in the main language we can now upload them to WebTranslateIt for translation. You can either use [wti](https://webtranslateit.com/en/tour/external_tools) command line tool provided by WebTranslateIt or simply run:
 
-`python translator.py translate`
+`zendesk-help-cms translate`
 
 It will upload the articles to WebTranslateIt. From this point the interaction with WebTranslateIt should be done through `wti`. This includes downloading translated content, uploading new content, updating existing content and so on.
 
@@ -61,7 +61,7 @@ When the translations are ready run:
 
 This will download all translations to the local folder with existing articles. To upload everything to Zendesk run
 
-`zendesk-translator export`
+`zendesk-help-cms export`
 
 This will upload the **entire** structure to Zendesk updating whatever is already there if it changed (this is checked by comparing md5 hashes of the title and body/description)
 
@@ -102,7 +102,7 @@ A category is a top level group, it holds sections. Each category had a `__group
 
 This file will be translated giving you variants like `__group__.fr.json` for different languages. To change category name or description simply edit this file.
 
-The file needs to be created when you add a new category, either by hand or by running `zendesk-translator doctor`.
+The file needs to be created when you add a new category, either by hand or by running `zendesk-help-cms doctor`.
 
 Once a category is in Zendesk help centre it will also have `.group.meta` file containing the information from Zendesk. This file should not be edited and is for internal use only.
 
@@ -121,7 +121,7 @@ Once an article is in Zendesk it will also have a meta file. This file stores in
 ### Creating new items
 
 ```
-zendesk-translator add "path/to/article.md"
+zendesk-help-cms add "path/to/article.md"
 ```
 
 It will create any necessary files. It won't upload the content anywhere. If you want to upload the content to Zendesk use `export` task. If you want to upload the content to WebTranslateIt use `wti`
@@ -129,12 +129,12 @@ It will create any necessary files. It won't upload the content anywhere. If you
 ### Removing items
 
 ```
-zendesk-translator remove  "path/to/article.md"
-zendesk-translator remove "category"
+zendesk-help-cms remove  "path/to/article.md"
+zendesk-help-cms remove "category"
 ```
 
 It will remove files locally and from Zendesk and WebTranslateIt. It will not remove categories/sections together with articles even if they are empty, it has to be done separately from removing articles. Removing category/section will remove everything in it.
 
 ### Fixing missing files
 
-If you want you can create categories/sections/articles by hand. Instead of creating all necessary files you can create folders for categories/sections and the  markdown file for the article. To create missing files run `zendesk-translator doctor`. It will create files with default names (directory/)
+If you want you can create categories/sections/articles by hand. Instead of creating all necessary files you can create folders for categories/sections and the  markdown file for the article. To create missing files run `zendesk-help-cms doctor`. It will create files with default names (directory/)
