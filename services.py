@@ -21,12 +21,13 @@ class MetaService(object):
         if os.path.exists(filepath):
             with open(filepath, 'r') as file:
                 return json.load(file)
-        return None
+        return {}
 
     def save(self, filepath, data):
-        with open(filepath, 'w') as file:
-            LOG.info('saving meta info {} to path {}', data['name'], filepath)
-            json.dump(data, file, indent=4, sort_keys=True)
+        if data:
+            with open(filepath, 'w') as file:
+                LOG.info('saving meta info {} to path {}', data.get('name'), filepath)
+                json.dump(data, file, indent=4, sort_keys=True)
 
     def remove(self, filepath):
         LOG.debug('removing file {}', filepath)
