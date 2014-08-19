@@ -26,7 +26,6 @@ class AbstractTask(object):
     def __init__(self, options=None):
         super().__init__()
         self.options = options or {}
-        self.options['root_folder'] = os.getcwd()
 
     def _validate_options(self, options, required_params=None):
         missing_property_msg = 'there is no "{}" defined in the configuration. please check the docs for help'
@@ -323,7 +322,8 @@ class ConfigTask(AbstractTask):
             default_image_cdn = default_config.get('image_cdn', '')
             image_cdn = input('CDN path for storing images ({}):'.format(default_image_cdn)) or default_image_cdn
             default_disable_article_comments = default_config.get('disable_article_comments', '')
-            disable_article_comments = input('Disable article comments:') or default_disable_article_comments
+            disable_article_comments = input('Disable article comments ({}):'.format(default_disable_article_comments))
+            disable_article_comments = disable_article_comments or default_disable_article_comments
         else:
             company_name = input('Zendesk\'s company name:')
             user = input('Zendesk\'s user name:')
@@ -373,9 +373,9 @@ def parse_args():
     # Global settings
     parser.add_argument('-v', '--verbose', help='Increase output verbosity',
                         action='store_true')
-    parser.add_argument('-r', '--root',
+    parser.add_argument('-r', '--root_folder',
                         help='items.Article\'s root folder',
-                        default='help_center_content')
+                        default=os.getcwd())
 
     # Task subparser settings
     task_parsers['remove'].add_argument('path', help='Set path for removing an item')

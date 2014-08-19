@@ -12,7 +12,7 @@ Python script for zendesk helpcenter translations.
 
 ## Installation
 
-1. `pip install zendesk-help-cms`
+`pip install zendesk-help-cms`
 
 ## Usage
 

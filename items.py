@@ -4,6 +4,8 @@ import html2text
 import utils
 import services
 
+MARKDOWN_EXTENSION = '.mkdown'
+
 
 class AbstractItem(object):
     TRANSLATE_KEY = 'webtranslateit_ids'
@@ -82,7 +84,7 @@ class Group(AbstractItem):
         article_dir = os.path.join(self.path, locale)
         filepaths = [filepath for filepath in os.listdir(article_dir)
                      if os.path.isfile(os.path.join(article_dir, filepath))]
-        article_names = filter(lambda a: a.endswith('.md'), filepaths)
+        article_names = filter(lambda a: a.endswith(MARKDOWN_EXTENSION), filepaths)
         article_names_bits = map(lambda a: a.split('.'), article_names)
         article_names_bits = filter(lambda a: len(a) == 2, article_names_bits)
         article_names = map(lambda a: a[0], article_names_bits)
@@ -155,7 +157,7 @@ class Article(AbstractItem):
         self.name = name
         self._content_filename = '{}.json'.format(self.name)
         self._meta_filename = '.article_{}.meta'.format(self.name)
-        self._body_filename = '{}.md'.format(self.name)
+        self._body_filename = self.name + MARKDOWN_EXTENSION
 
     @property
     def body_filename(self):

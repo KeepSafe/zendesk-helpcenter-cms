@@ -7,7 +7,7 @@ import json
 import utils
 import exceptions
 
-LOG = utils.Logger()
+LOG = utils.Logger(True)
 
 
 class MetaService(object):
@@ -83,7 +83,7 @@ class ZendeskService(object):
         return ZendeskService.DEFAULT_URL.format(self.options['company_name'], path)
 
     def _fetch(self, url):
-        response = requests.get(url, auth=(self.options['user'], self.options['password']))
+        response = requests.get(url)
         if response.status_code != 200:
             raise exceptions.ZendeskException('there was a problem fetching data from {}. status was {} and message {}'
                                               .format(url, response.status_code, response.text))
@@ -314,8 +314,9 @@ class WebTranslateItService(object):
             response = requests.post(url,
                                      data={'file': normalized_filepath, 'name': normalized_filepath},
                                      files={'file': file})
+
             if response.status_code == 200:
-                return str(response.json())
+                return response.text
             return None
 
     def delete(self, file_ids):

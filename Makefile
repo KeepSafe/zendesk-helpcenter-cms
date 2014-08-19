@@ -11,7 +11,6 @@ update:
 
 install:
 	python3 -m venv venv
-
 	$(PYTHON) ./setup.py install
 
 dev:
