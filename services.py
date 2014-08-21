@@ -84,7 +84,10 @@ class ZendeskService(object):
         return ZendeskService.DEFAULT_URL.format(self.options['company_name'], path)
 
     def _fetch(self, url):
-        response = requests.get(url)
+        response = requests.get(url, auth=(self.options['user'], self.options['password']))
+
+        if response.status_code == 404:
+            return {}
         if response.status_code != 200:
             raise exceptions.ZendeskException('there was a problem fetching data from {}. status was {} and message {}'
                                               .format(url, response.status_code, response.text))
@@ -196,9 +199,9 @@ class ZendeskService(object):
         return response_data['translation']
 
     def _has_content_changed(self, url, translation):
-        content = self._fetch(url)['translation']
+        content = self._fetch(url).get('translation', {})
         for key in ['body', 'title']:
-            content_body = content[key] or ''
+            content_body = content.get(key, '')
             content_hash = hashlib.md5(content_body.encode('utf-8'))
             translation_hash = hashlib.md5(translation[key].encode('utf-8'))
             if content_hash.hexdigest() != translation_hash.hexdigest():
@@ -208,9 +211,9 @@ class ZendeskService(object):
     def _missing_locales(self, url):
         response = requests.get(url, auth=(self.options['user'], self.options['password']),
                                 headers={'Content-type': 'application/json'})
+
         if response.status_code != 200:
-            raise exceptions.ZendeskException('there was a problem fetching missng locales from {}. status was {} and message {}'
-                                              .format(url, response.status_code, response.text))
+            return {}
         response_data = response.json()
         return response_data['locales']
 
