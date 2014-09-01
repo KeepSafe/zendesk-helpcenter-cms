@@ -4,3 +4,7 @@ class ConfigError(Exception):
 
 class ZendeskException(Exception):
     pass
+
+
+class FileFormatError(Exception):
+    pass

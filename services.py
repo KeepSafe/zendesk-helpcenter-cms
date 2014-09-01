@@ -6,67 +6,53 @@ import hashlib
 import json
 import utils
 import exceptions
+import logging
 
-LOG = utils.Logger(True)
 
+class FilesystemService(object):
+    _reader = {
+        'text': lambda fp: fp.read(),
+        'json': lambda fp: json.load(fp)
+    }
 
-class MetaService(object):
+    _writer = {
+        'text': lambda fp, data: fp.write(data),
+        'json': lambda fp, data: json.dump(data, fp, indent=4, sort_keys=True)
+    }
 
-    """
-    Handles all meta content, meaning the content coming from Zendesk. Normally just dumps json from Zendesk to a file
-    and reads whatever is needed from there. Also has some utility methods which requite meta info.
-    """
-
-    def read(self, filepath):
+    def read(self, filepath, file_format='text'):
+        if file_format not in self._reader:
+            raise exceptions.FileFormatError('Only {} formats are available but {} was given'.format(list(self._reader.keys()), file_format))
         if os.path.exists(filepath):
-            with open(filepath, 'r') as file:
-                return json.load(file)
-        return {}
-
-    def save(self, filepath, data):
-        if data:
-            with open(filepath, 'w') as file:
-                LOG.info('saving meta info {} to path {}', data.get('name'), filepath)
-                json.dump(data, file, indent=4, sort_keys=True)
-
-    def remove(self, filepath):
-        LOG.debug('removing file {}', filepath)
-        os.remove(filepath)
-
-    def move(self, source, destination):
-        shutil.move(source, destination)
-
-
-class ContentService(object):
-
-    """
-    Handles all content, meaning the stuff that is used to create categories and articles. Categories and sections use
-    special file to hold name and description.
-    """
-
-    def save(self, filepath, data):
-        if not os.path.exists(filepath):
-            with open(filepath, 'w') as file:
-                file.write(data)
-            LOG.info('saving content to path {}', filepath)
+            with open(filepath) as fp:
+                logging.debug('Reading file from %s in %s format', filepath, file_format)
+                return self._reader[file_format](fp)
         else:
-            LOG.info('content at path {} already exists, skipping...', filepath)
+            logging.info('File at %s doesn\'t exist, reading skipped', filepath)
+            return {}
 
-    def read(self, filepath):
-        with open(filepath, 'r') as file:
-            LOG.info('reading content from path {}', filepath)
-            return file.read()
+    def save(self, filepath, data, file_format='text'):
+        if file_format not in self._writer:
+            raise exceptions.FileFormatError('Only {} formats are available but {} was given'.format(list(self._writer.keys()), file_format))
+        if os.path.exists(filepath):
+            with open(filepath, 'w') as fp:
+                logging.debug('Saving file to %s in %s format', filepath, file_format)
+                return self._writer[file_format](fp, data)
+        else:
+            logging.info('File at %s doesn\'t exist, reading skipped', filepath)
+            return {}
 
     def remove(self, filepath):
-        LOG.debug('removing file {}', filepath)
+        logging.debug('Removing file from %s', filepath)
         os.remove(filepath)
 
-    def remove_group(self, filepath):
-        LOG.debug('removing folder {}', filepath)
-        shutil.rmtree(filepath)
+    def remove_dir(self, dirpath):
+        logging.debug('Removing dir tree from %s', dirpath)
+        shutil.rmtree(dirpath)
 
-    def move(self, source, destination):
-        shutil.move(source, destination)
+    def move(self, source_path, destination_path):
+        logging.debug('moving from %s to %s', source_path, destination_path)
+        shutil.move(source_path, destination_path)
 
 
 class ZendeskService(object):
@@ -95,17 +81,17 @@ class ZendeskService(object):
 
     def fetch_categories(self):
         url = self.url_for('categories.json')
-        LOG.debug('fetching categories from {}', url)
+        logging.debug('fetching categories from %s', url)
         return self._fetch(url)['categories']
 
     def fetch_sections(self, category_id):
         url = self.url_for('categories/{}/sections.json'.format(category_id))
-        LOG.debug('fetching sections from {}', url)
+        logging.debug('fetching sections from %s', url)
         return self._fetch(url)['sections']
 
     def fetch_articles(self, section_id):
         url = self.url_for('sections/{}/articles.json'.format(section_id))
-        LOG.debug('fetching articles from {}', url)
+        logging.debug('fetching articles from %s', url)
         return self._fetch(url)['articles']
 
     def update_category(self, category):
@@ -149,7 +135,7 @@ class ZendeskService(object):
                     'locale': utils.to_zendesk_locale(locale or utils.DEFAULT_LOCALE)
                 }
                 result.append(translation)
-        LOG.debug('translations for group {} are {}', filepath, result)
+        logging.debug('translations for group %s are %s', filepath, result)
         return result
 
     def _article_translations(self, translations, cdn_path):
@@ -168,25 +154,25 @@ class ZendeskService(object):
                 'locale': utils.to_zendesk_locale(locale or utils.DEFAULT_LOCALE)
             }
             result.append(translation)
-        LOG.debug('translations for article {} are {}', content_filepath, result)
+        logging.debug('translations for article %s are %s', content_filepath, result)
         return result
 
     def _translate(self, url, missing_url, item_id, translations):
         missing_locales = self._missing_locales(missing_url)
-        LOG.debug('missing locales for {} are {}', item_id, missing_locales)
+        logging.debug('missing locales for %s are %s', item_id, missing_locales)
         for translation in translations:
             locale = utils.to_zendesk_locale(translation['locale'])
             if locale in missing_locales:
                 create_url = self.url_for(url.format(item_id, ''))
-                LOG.debug('creating translation at {}', create_url)
+                logging.debug('creating translation at %s', create_url)
                 self._send_translate_request(create_url, {'translation': translation}, requests.post)
             else:
                 update_url = self.url_for(url.format(item_id, '/' + locale))
                 if self._has_content_changed(update_url, translation):
-                    LOG.debug('updating translation at {}', update_url)
+                    logging.debug('updating translation at %s', update_url)
                     self._send_translate_request(update_url, translation, requests.put)
                 else:
-                    LOG.debug('skipping as nothing changed for translation {}', update_url)
+                    logging.debug('skipping as nothing changed for translation %s', update_url)
 
     def _send_translate_request(self, url, translation_data, request_fn):
         response = request_fn(url, data=json.dumps(translation_data),
@@ -227,7 +213,7 @@ class ZendeskService(object):
 
     def create_category(self, translations):
         url = self.url_for('categories.json')
-        LOG.debug('creating new category at {}', url)
+        logging.debug('creating new category at %s', url)
         data = {
             'category': {
                 'translations': self._group_translations(translations)
@@ -237,7 +223,7 @@ class ZendeskService(object):
 
     def create_section(self, category_id, translations):
         url = self.url_for('categories/{}/sections.json'.format(category_id))
-        LOG.debug('creating new section at {}', url)
+        logging.debug('creating new section at %s', url)
         data = {
             'section': {
                 'translations': self._group_translations(translations)
@@ -247,7 +233,7 @@ class ZendeskService(object):
 
     def create_article(self, section_id, cdn_path, comments_disabled, translations):
         url = self.url_for('sections/{}/articles.json'.format(section_id))
-        LOG.debug('creating new article at {}', url)
+        logging.debug('creating new article at %s', url)
         data = {
             'article': {
                 'translations': self._article_translations(translations, cdn_path),
@@ -258,25 +244,25 @@ class ZendeskService(object):
 
     def delete_article(self, article_id):
         url = self.url_for('articles/{}.json'.format(article_id))
-        LOG.debug('deleting article from {}', url)
+        logging.debug('deleting article from %s', url)
         response = requests.delete(url, auth=(self.options['user'], self.options['password']))
         return response.status_code == 200
 
     def delete_section(self, section_id):
         url = self.url_for('sections/{}.json'.format(section_id))
-        LOG.debug('deleting section from {}', url)
+        logging.debug('deleting section from %s', url)
         response = requests.delete(url, auth=(self.options['user'], self.options['password']))
         return response.status_code == 200
 
     def delete_category(self, category_id):
         url = self.url_for('categories/{}.json'.format(category_id))
-        LOG.debug('deleting category from {}', url)
+        logging.debug('deleting category from %s', url)
         response = requests.delete(url, auth=(self.options['user'], self.options['password']))
         return response.status_code == 200
 
     def move_article(self, article_id, section_id):
         url = self.url_for('articles/{}.json'.format(article_id))
-        LOG.debug('moving article {}', url)
+        logging.debug('moving article %s', url)
         data = {
             'article': {
                 'section_id': section_id
@@ -287,7 +273,7 @@ class ZendeskService(object):
 
     def move_section(self, section_id, category_id):
         url = self.url_for('sections/{}.json'.format(section_id))
-        LOG.debug('moving section {}', url)
+        logging.debug('moving section %s', url)
         data = {
             'section': {
                 'category_id': category_id
@@ -314,7 +300,7 @@ class WebTranslateItService(object):
         with open(filepath, 'r') as file:
             normalized_filepath = os.path.relpath(filepath).replace('\\', '/')
             url = self.url_for('files')
-            LOG.debug('upload file {} for transaltion to {}', normalized_filepath, url)
+            logging.debug('upload file %s for transaltion to %s', normalized_filepath, url)
             response = requests.post(url,
                                      data={'file': normalized_filepath, 'name': normalized_filepath},
                                      files={'file': file})
@@ -326,14 +312,14 @@ class WebTranslateItService(object):
     def delete(self, file_ids):
         for file_id in file_ids:
             url = self.url_for('files/' + file_id)
-            LOG.debug('removing file {} from {}', file_id, url)
+            logging.debug('removing file {} from {}', file_id, url)
             requests.delete(url)
 
     def move(self, file_id, new_path):
         with open(new_path, 'r') as file:
             normalized_new_path = new_path.replace('\\', '/')
             url = self.url_for('files/{}/locales/en'.format(file_id))
-            LOG.debug('update file {} for transaltion', normalized_new_path)
+            logging.debug('update file %s for transaltion', normalized_new_path)
             requests.put(url,
                          data={'file': normalized_new_path, 'name': normalized_new_path},
                          files={'file': file})
