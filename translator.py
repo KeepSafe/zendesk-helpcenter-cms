@@ -10,12 +10,12 @@ import argparse
 import os
 import configparser
 
-import utils
+import logging
 import services
 import items
 import exceptions
 
-LOG = utils.Logger()
+DEFAULE_LOG_LEVEL = 'WARNING'
 CONFIG_FILE = 'translator.config'
 ZENDESK_REQUIRED_CONFIG = ['company_name', 'user', 'password']
 WEBTRANSLATEIT_REQUIRED_CONFIG = ['webtranslateit_api_key']
@@ -45,31 +45,30 @@ class ImportTask(AbstractTask):
 
     def __init__(self, options):
         super().__init__(options)
-        self.zendesk = services.ZendeskService(options)
         self._validate_options(options, ZENDESK_REQUIRED_CONFIG)
 
     def execute(self):
-        LOG.info('executing import task...')
+        logging.info('executing import task...')
         self.create_categories()
 
     def create_categories(self):
-        zendesk_categories = self.zendesk.fetch_categories()
+        zendesk_categories = services.zendesk.fetch_categories()
         for zendesk_category in zendesk_categories:
-            LOG.debug('creating category {}', zendesk_category['name'])
+            logging.debug('creating category %s', zendesk_category['name'])
             category = items.Group.from_zendesk(self.options['root_folder'], zendesk_category)
             self.create_sections(category)
 
     def create_sections(self, category):
-        zendesk_sections = self.zendesk.fetch_sections(category.zendesk_id)
+        zendesk_sections = services.zendesk.fetch_sections(category.zendesk_id)
         for zendesk_section in zendesk_sections:
-            LOG.debug('creating section {}', zendesk_section['name'])
+            logging.debug('creating section %s', zendesk_section['name'])
             section = items.Group.from_zendesk(category.path, zendesk_section, category)
             self.create_articles(section)
 
     def create_articles(self, section):
-        zendesk_articles = self.zendesk.fetch_articles(section.zendesk_id)
+        zendesk_articles = services.zendesk.fetch_articles(section.zendesk_id)
         for zendesk_article in zendesk_articles:
-            LOG.debug('creating article {}', zendesk_article['name'])
+            logging.debug('creating article %s', zendesk_article['name'])
             items.Article.from_zendesk(section.path, zendesk_article)
 
 
@@ -82,11 +81,10 @@ class ExportTask(AbstractTask):
 
     def __init__(self, options):
         super().__init__(options)
-        self.zendesk = services.ZendeskService(options)
         self._validate_options(options, ZENDESK_REQUIRED_CONFIG)
 
     def execute(self):
-        LOG.info('executing export task...')
+        logging.info('executing export task...')
         root = self.options['root_folder']
         category_paths = [os.path.join(root, name) for name in os.listdir(root)
                           if not os.path.isfile(os.path.join(root, name))]
@@ -94,33 +92,33 @@ class ExportTask(AbstractTask):
             category = items.Group(category_path)
             category_id = category.zendesk_id
             if category_id:
-                LOG.info('exporting category from {}', category.content_filename)
-                self.zendesk.update_category(category)
+                logging.info('exporting category from %s', category.content_filename)
+                services.zendesk.update_category(category)
             else:
-                LOG.info('exporting new category from {}', category.content_filename)
-                new_category = self.zendesk.create_category(category.translations)
+                logging.info('exporting new category from %s', category.content_filename)
+                new_category = services.zendesk.create_category(category.translations)
                 category.meta = new_category
                 category_id = new_category['id']
             sections = category.children
             for section in sections:
                 section_id = section.zendesk_id
                 if section_id:
-                    LOG.info('exporting section from {}', section.content_filename)
-                    self.zendesk.update_section(section)
+                    logging.info('exporting section from %s', section.content_filename)
+                    services.zendesk.update_section(section)
                 else:
-                    LOG.info('exporting new section from {}', section.content_filename)
-                    new_section = self.zendesk.create_section(category_id, section.translations)
+                    logging.info('exporting new section from %s', section.content_filename)
+                    new_section = services.zendesk.create_section(category_id, section.translations)
                     section.meta = new_section
                     section_id = new_section['id']
                 articles = section.children
                 for article in articles:
                     article_id = article.zendesk_id
                     if article_id:
-                        LOG.info('exporting article {} from {}', article.name, article.path)
-                        self.zendesk.update_article(article, self.options['image_cdn'])
+                        logging.info('exporting article %s from %s', article.name, article.path)
+                        services.zendesk.update_article(article, self.options['image_cdn'])
                     else:
-                        LOG.info('exporting new article {} from {}', article.name, article.path)
-                        new_article = self.zendesk.create_article(
+                        logging.info('exporting new article %s from %s', article.name, article.path)
+                        new_article = services.zendesk.create_article(
                             section_id,
                             self.options['image_cdn'],
                             self.options['disable_article_comments'],
@@ -137,35 +135,37 @@ class TranslateTask(AbstractTask):
 
     def __init__(self, options):
         super().__init__(options)
-        self.translate = services.WebTranslateItService(options)
         self._validate_options(options, WEBTRANSLATEIT_REQUIRED_CONFIG)
 
     def execute(self):
-        LOG.info('executing translate task...')
+        logging.info('executing translate task...')
         root = self.options['root_folder']
         for filepath in os.listdir(root):
             category_path = os.path.join(root, filepath)
             if os.path.isdir(category_path):
                 category = items.Group(category_path)
-                LOG.info('upload {} for transaltion', category.content_filename)
-                category_translate_id = self.translate.create(category.content_filename)
-                category_meta = category.meta
-                category_meta.update({'webtranslateit_ids': [category_translate_id]})
-                category.meta = category_meta
+                logging.info('upload %s for transaltion', category.content_filename)
+                category_translate_id = services.translate.create(category.content_filename)
+                if category_translate_id:
+                    category_meta = category.meta
+                    category_meta.update({'webtranslateit_ids': [category_translate_id]})
+                    category.meta = category_meta
                 for section in category.children:
-                    LOG.info('upload {} for transaltion', section.content_filename)
-                    section_translate_id = self.translate.create(section.content_filename)
-                    section_meta = section.meta
-                    section_meta.update({'webtranslateit_ids': [section_translate_id]})
-                    section.meta = section_meta
+                    logging.info('upload %s for transaltion', section.content_filename)
+                    section_translate_id = services.translate.create(section.content_filename)
+                    if section_translate_id:
+                        section_meta = section.meta
+                        section_meta.update({'webtranslateit_ids': [section_translate_id]})
+                        section.meta = section_meta
                     for article in section.children:
-                        LOG.info('upload {} for transaltion', article.content_filename)
-                        content_translate_id = self.translate.create(article.content_filename)
-                        LOG.info('upload {} for transaltion', article.body_filename)
-                        body_translate_id = self.translate.create(article.body_filename)
-                        article_meta = article.meta
-                        article_meta.update({'webtranslateit_ids': [body_translate_id, content_translate_id]})
-                        article.meta = article_meta
+                        logging.info('upload %s for transaltion', article.content_filename)
+                        content_translate_id = services.translate.create(article.content_filename)
+                        logging.info('upload %s for transaltion', article.body_filename)
+                        body_translate_id = services.translate.create(article.body_filename)
+                        if content_translate_id or body_translate_id:
+                            article_meta = article.meta
+                            article_meta.update({'webtranslateit_ids': [body_translate_id, content_translate_id]})
+                            article.meta = article_meta
 
 
 class RemoveTask(AbstractTask):
@@ -176,12 +176,10 @@ class RemoveTask(AbstractTask):
 
     def __init__(self, options):
         super().__init__(options)
-        self.zendesk = services.ZendeskService(options)
-        self.translate = services.WebTranslateItService(options)
         self._validate_options(options, ZENDESK_REQUIRED_CONFIG + WEBTRANSLATEIT_REQUIRED_CONFIG)
 
     def execute(self):
-        LOG.info('executing delete task...')
+        logging.info('executing delete task...')
         path = self.options['path']
         if not os.path.exists(path):
             raise ValueError('Path to be deleted must exists, but {} doesn\'t'.format(path))
@@ -194,7 +192,7 @@ class RemoveTask(AbstractTask):
             self._delete_group(path)
 
     def _delete_group(self, path):
-        LOG.info('deleting group from {}', path)
+        logging.info('deleting group from %s', path)
         category, section = items.Group.from_path(self.options['root'], path)
         if section:
             group = section
@@ -204,16 +202,16 @@ class RemoveTask(AbstractTask):
             group = category
             for section in group.children:
                 self._delete_group(section.path)
-        self.zendesk.delete_section(group.zendesk_id)
-        self.translate.delete(group.translate_ids)
+        services.zendesk.delete_section(group.zendesk_id)
+        services.translate.delete(group.translate_ids)
         group.remove()
 
     def _delete_article(self, article):
-        LOG.info('deleting article {} from {}', article.name, article.path)
+        logging.info('deleting article %s from %s', article.name, article.path)
         article_id = article.zendesk_id
         if article_id:
-            self.zendesk.delete_article(article.zendesk_id)
-        self.translate.delete(article.translate_ids)
+            services.zendesk.delete_article(article.zendesk_id)
+        services.translate.delete(article.translate_ids)
         article.remove()
 
 
@@ -225,8 +223,6 @@ class MoveTask(AbstractTask):
 
     def __init__(self, options):
         super().__init__(options)
-        self.zendesk = services.ZendeskService(options)
-        self.translate = services.WebTranslateItService(options)
         self._validate_options(options, ZENDESK_REQUIRED_CONFIG + WEBTRANSLATEIT_REQUIRED_CONFIG)
 
     def execute(self):
@@ -250,23 +246,23 @@ class MoveTask(AbstractTask):
                              .format(article.name, dest_category.path))
 
         if article:
-            LOG.info('moving article {} to section {}', article.name, dest_section.path)
+            logging.info('moving article %s to section %s', article.name, dest_section.path)
             body_translate_id, content_translate_id = article.translate_ids
-            self.zendesk.move_article(article.zendesk_id, dest_section.zendesk_id)
+            services.zendesk.move_article(article.zendesk_id, dest_section.zendesk_id)
             article.move_to(dest_section)
-            self.translate.move(body_translate_id, article.body_filename)
-            self.translate.move(content_translate_id, article.content_filename)
+            services.translate.move(body_translate_id, article.body_filename)
+            services.translate.move(content_translate_id, article.content_filename)
         elif group:
-            LOG.info('moving section {} to category {}', group.path, dest_category.path)
+            logging.info('moving section %s to category %s', group.path, dest_category.path)
             content_translate_id, = group.translate_ids
-            self.zendesk.move_section(group.zendesk_id, dest_category.zendesk_id)
+            services.zendesk.move_section(group.zendesk_id, dest_category.zendesk_id)
             group.move_to(dest_category)
             for article in group.children:
-                LOG.info('moving article {} in translations', article.name)
+                logging.info('moving article %s in translations', article.name)
                 body_translate_id, content_translate_id = article.translate_ids
-                self.translate.move(body_translate_id, article.body_filename)
-                self.translate.move(content_translate_id, article.content_filename)
-            self.translate.move(content_translate_id, group.content_filename)
+                services.translate.move(body_translate_id, article.body_filename)
+                services.translate.move(content_translate_id, article.content_filename)
+            services.translate.move(content_translate_id, group.content_filename)
 
         else:
             raise ValueError('Neither section nor article was specified as source. please check the path {}'
@@ -280,7 +276,7 @@ class DoctorTask(AbstractTask):
     """
 
     def execute(self):
-        LOG.info('executing doctor task...')
+        logging.info('executing doctor task...')
         root = self.options['root_folder']
         category_paths = [os.path.join(root, name) for name in os.listdir(root)
                           if not os.path.isfile(os.path.join(root, name))]
@@ -371,8 +367,10 @@ def parse_args():
     task_parsers = {task_parser: subparsers.add_parser(task_parser) for task_parser in tasks}
 
     # Global settings
-    parser.add_argument('-v', '--verbose', help='Increase output verbosity',
-                        action='store_true')
+    parser.add_argument('-l', '--loglevel',
+                        help='Specify log level (DEBUG, INFO, WARNING, ERROR, CRITICAL), default: %s'
+                        % DEFAULE_LOG_LEVEL,
+                        default=DEFAULE_LOG_LEVEL)
     parser.add_argument('-r', '--root_folder',
                         help='items.Article\'s root folder',
                         default=os.getcwd())
@@ -385,6 +383,11 @@ def parse_args():
     return parser.parse_args()
 
 
+def init_log(loglevel):
+    num_level = getattr(logging, loglevel.upper(), 'WARNING')
+    logging.basicConfig(level=num_level)
+
+
 def parse_config():
     config = configparser.ConfigParser()
     config.read(CONFIG_FILE)
@@ -393,7 +396,6 @@ def parse_config():
 
 def resolve_args(args, options):
     task = tasks[args.task](options)
-    LOG.verbose = args.verbose
 
     for key, value in vars(args).items():
         options[key] = value
@@ -409,9 +411,12 @@ def fix_defaults(options):
 
 def main():
     args = parse_args()
+    init_log(args.loglevel)
     options = parse_config()
     fix_defaults(options)
     task, options = resolve_args(args, options)
+    services.zendesk.req = services.ZendeskRequest(options['company_name'], options['user'], options['password'])
+    services.translate.api_key = options['webtranslateit_api_key']
 
     task.execute()
 

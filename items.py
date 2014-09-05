@@ -1,5 +1,6 @@
 import os
 import html2text
+import logging
 
 import utils
 import services
@@ -13,25 +14,23 @@ class AbstractItem(object):
 
     def __init__(self, path):
         os.makedirs(path, exist_ok=True)
-        self.meta_repo = services.MetaService()
-        self.content_repo = services.ContentService()
         self.path = path
 
     @property
     def meta(self):
-        return self.meta_repo.read(self.meta_filename)
+        return services.filesystem.read(self.meta_filename)
 
     @meta.setter
     def meta(self, value):
-        self.meta_repo.save(self.meta_filename, value)
+        services.filesystem.save(self.meta_filename, value)
 
     @property
     def content(self):
-        return utils.from_json(self.content_repo.read(self.content_filename))
+        return services.filesystem.read(self.content_filename)
 
     @content.setter
     def content(self, value):
-        self.content_repo.save(self.content_filename, utils.to_json(value))
+        services.filesystem.save(self.content_filename, value)
 
     @property
     def content_filename(self):
@@ -66,8 +65,11 @@ class AbstractItem(object):
             return False
 
     def fixme(self, content):
-        os.makedirs(self.path, exist_ok=True)
         if not os.path.exists(self.content_filename):
+            for key, value in content.items():
+                new_value = input('Please provide a {} for this item (default: {})'.format(key, value))
+                new_value = new_value or value
+                content[key] = new_value
             self.content = content
 
 
@@ -96,9 +98,13 @@ class Group(AbstractItem):
             self.path) if os.path.isdir(os.path.join(self.path, filepath))]
         return [Group(os.path.join(self.path, filepath), self) for filepath in filepaths]
 
+    def _is_section(self):
+        return self.parent is not None
+
     @property
     def children(self):
-        if self.parent:
+        # categories have no parents, sections have categories as parents
+        if self._is_section():
             return self._articles()
         else:
             return self._subgroups()
@@ -118,19 +124,44 @@ class Group(AbstractItem):
         return result
 
     def fixme(self):
+        self._create_missing_locales()
+        self._slugify_name()
         super().fixme({'name': os.path.basename(self.path), 'description': ''})
 
     def remove(self):
         for child in self.children:
             child.remove()
         for locale, filepath in self.translations.items():
-            self.content_repo.remove(filepath)
-        self.meta_repo.remove(self.meta_filename)
-        self.content_repo.remove_group(self.path)
+            services.filesystem.remove(filepath)
+        services.filesystem.remove(self.meta_filename)
+        services.filesystem.remove_group(self.path)
 
     def move_to(self, group):
-        self.content_repo.move(self.path, group.path)
+        services.filesystem.move(self.path, group.path)
         self.path = os.path.join(group.path, os.path.basename(self.path))
+
+    def _create_missing_locales(self):
+        if not self._is_section():
+            return
+        logging.debug('creating missing locales directories in %s', self.path)
+        locales = [utils.to_iso_locale(locale) for locale in services.zendesk.available_locales()]
+        for locale in locales:
+            locale_path = os.path.join(self.path, locale)
+            if not os.path.exists(locale_path):
+                logging.debug('creating directory for locale %s', locale)
+                os.makedirs(locale_path, exist_ok=True)
+
+    def _slugify_name(self):
+        name = os.path.basename(self.path)
+        slugify_name = utils.slugify(name)
+        if name != slugify_name:
+            slugify_path = os.path.join(os.path.dirname(self.path), slugify_name)
+            services.filesystem.move(self.path, slugify_path)
+            self.path = slugify_path
+            super().fixme({'name': name, 'description': ''})
+            if self.translate_ids:
+                translate_id, = self.translate_ids
+                services.translate.move(translate_id, self.content_filename)
 
     @staticmethod
     def from_zendesk(parent_path, zendesk_group, parent=None):
@@ -165,11 +196,11 @@ class Article(AbstractItem):
 
     @property
     def body(self):
-        return self.content_repo.read(self.body_filename)
+        return services.filesystem.read(self.body_filename, file_format='text')
 
     @body.setter
     def body(self, value):
-        self.content_repo.save(self.body_filename, value)
+        services.filesystem.save(self.body_filename, value, file_format='text')
 
     @property
     def attachments_path(self):
@@ -188,19 +219,51 @@ class Article(AbstractItem):
 
     def remove(self):
         for locale, (content_filepath, body_filepath) in self.translations.items():
-            self.content_repo.remove(content_filepath)
-            self.content_repo.remove(body_filepath)
-        self.meta_repo.remove(self.meta_filename)
+            services.filesystem.remove(content_filepath)
+            services.filesystem.remove(body_filepath)
+        services.filesystem.remove(self.meta_filename)
 
     def move_to(self, group):
         for locale, (content_filepath, body_filepath) in self.translations.items():
-            self.content_repo.move(content_filepath, group.path)
-            self.content_repo.move(body_filepath, group.path)
-        self.meta_repo.move(self.meta_filename, group.path)
+            services.filesystem.move(content_filepath, group.path)
+            services.filesystem.move(body_filepath, group.path)
+        services.filesystem.move(self.meta_filename, group.path)
         self.path = group.path
 
     def fixme(self):
         super().fixme({'name': self.name})
+        self._slugify_name()
+
+    def _slugify_name(self):
+        slugify_name = utils.slugify(self.name)
+        if slugify_name != self.name:
+            body_filepath = self.body_filename
+            content_filename = self.content_filename
+            translations = self.translations
+
+            self.name = slugify_name
+            self._content_filename = '{}.json'.format(self.name)
+            self._meta_filename = '.article_{}.meta'.format(self.name)
+            self._body_filename = self.name + MARKDOWN_EXTENSION
+
+            slugify_body_filepath = self.body_filename
+            slugify_content_filename = self.content_filename
+            slugify_translations = self.translations
+
+            services.filesystem.move(body_filepath, slugify_body_filepath)
+            services.filesystem.move(content_filename, slugify_content_filename)
+            for translation_key in translations:
+                content_translation, body_translation = translations[translation_key]
+                slugify_content_translation, slugify_body_translation = slugify_translations[translation_key]
+                if os.path.exists(body_translation):
+                    services.filesystem.move(body_translation, slugify_body_translation)
+                if os.path.exists(content_translation):
+                    services.filesystem.move(content_translation, slugify_content_translation)
+
+            if self.translate_ids:
+                body_translate_id, content_translate_id = self.translate_ids
+                services.translate.move(body_translate_id, self.body_filename)
+                services.translate.move(content_translate_id, self.content_filename)
 
     @staticmethod
     def from_zendesk(section_path, zendesk_article):

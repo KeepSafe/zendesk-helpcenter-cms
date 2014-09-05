@@ -19,7 +19,6 @@ class TestFilesystemService(TestCase):
         with patch('os.path.exists') as mock_exists:
             mock_exists.return_value = False
             self.assertEqual({}, self.service.read('dummy'))
-            self.assertEqual({}, self.service.save('dummy', {}))
 
     def test_read_text_happy_path(self):
         with tempfile.NamedTemporaryFile(mode='w') as fp:
@@ -27,7 +26,7 @@ class TestFilesystemService(TestCase):
             fp.write(expected)
             fp.flush()
 
-            actual = self.service.read(fp.name)
+            actual = self.service.read(fp.name, file_format='text')
 
         self.assertEqual(expected, actual)
 
@@ -36,7 +35,7 @@ class TestFilesystemService(TestCase):
             fp.write('{"1":"test"}')
             fp.flush()
 
-            actual = self.service.read(fp.name, file_format='json')
+            actual = self.service.read(fp.name)
 
         self.assertEqual({'1': 'test'}, actual)
 
@@ -44,14 +43,14 @@ class TestFilesystemService(TestCase):
         with tempfile.NamedTemporaryFile(mode='w+') as fp:
             expected = 'dummy data'
 
-            self.service.save(fp.name, expected)
+            self.service.save(fp.name, expected, file_format='text')
             actual = fp.read()
 
         self.assertEqual(expected, actual)
 
     def test_save_json_happy_path(self):
         with tempfile.NamedTemporaryFile(mode='w+') as fp:
-            self.service.save(fp.name, {'1': 'test'}, file_format='json')
+            self.service.save(fp.name, {'1': 'test'})
             actual = fp.read()
 
         self.assertEqual('{\n    "1": "test"\n}', actual)

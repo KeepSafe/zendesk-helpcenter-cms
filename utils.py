@@ -16,14 +16,6 @@ def slugify(value):
     return re.sub('[-\s]+', '-', value)
 
 
-def to_json(data):
-    return json.dumps(data, indent=4, sort_keys=True)
-
-
-def from_json(data):
-    return json.loads(data)
-
-
 def convert_to_cdn_path(cdn_path, body):
     return re.sub(IMAGE_CDN_PATTERN, '\\1{}\\2'.format(cdn_path), body)
 
@@ -38,21 +30,3 @@ def to_iso_locale(locale):
         return first + '-' + second.upper()
     else:
         return locale
-
-
-class Logger(object):
-
-    """
-    Logs messages to stdout. Has 2 levels, info and debug, with debug only being used if verbose is True.
-    """
-
-    def __init__(self, verbose=False):
-        super().__init__()
-        self.verbose = verbose
-
-    def debug(self, message, *args):
-        if self.verbose:
-            print(message.format(*args))
-
-    def info(self, message, *args):
-        print(message.format(*args))

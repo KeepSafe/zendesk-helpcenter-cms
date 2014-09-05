@@ -20,9 +20,10 @@ class FilesystemService(object):
         'json': lambda fp, data: json.dump(data, fp, indent=4, sort_keys=True)
     }
 
-    def read(self, filepath, file_format='text'):
+    def read(self, filepath, file_format='json'):
         if file_format not in self._reader:
-            raise exceptions.FileFormatError('Only {} formats are available but {} was given'.format(list(self._reader.keys()), file_format))
+            raise exceptions.FileFormatError('Only {} formats are available but {} was given'.format(
+                list(self._reader.keys()), file_format))
         if os.path.exists(filepath):
             with open(filepath) as fp:
                 logging.debug('Reading file from %s in %s format', filepath, file_format)
@@ -31,16 +32,13 @@ class FilesystemService(object):
             logging.info('File at %s doesn\'t exist, reading skipped', filepath)
             return {}
 
-    def save(self, filepath, data, file_format='text'):
+    def save(self, filepath, data, file_format='json'):
         if file_format not in self._writer:
-            raise exceptions.FileFormatError('Only {} formats are available but {} was given'.format(list(self._writer.keys()), file_format))
-        if os.path.exists(filepath):
-            with open(filepath, 'w') as fp:
-                logging.debug('Saving file to %s in %s format', filepath, file_format)
-                return self._writer[file_format](fp, data)
-        else:
-            logging.info('File at %s doesn\'t exist, reading skipped', filepath)
-            return {}
+            raise exceptions.FileFormatError('Only {} formats are available but {} was given'.format(
+                list(self._writer.keys()), file_format))
+        with open(filepath, 'w') as fp:
+            logging.debug('Saving file to %s in %s format', filepath, file_format)
+            return self._writer[file_format](fp, data)
 
     def remove(self, filepath):
         logging.debug('Removing file from %s', filepath)
@@ -55,74 +53,103 @@ class FilesystemService(object):
         shutil.move(source_path, destination_path)
 
 
+class ZendeskRequest(object):
+    DEFAULT_URL = 'https://{}.zendesk.com/hc/api/v2/{}'
+
+    def __init__(self, company_name, user, password):
+        super().__init__()
+        self.company_name = company_name
+        self.user = user
+        self.password = password
+
+    def url_for(self, path):
+        return self.DEFAULT_URL.format(self.company_name, path)
+
+    def get(self, url):
+        url = self.url_for(url)
+        logging.debug('getting data from %s', url)
+        response = requests.get(url, auth=(self.user, self.password))
+
+        if response.status_code == 404:
+            logging.info('%s does not exist', url)
+            return {}
+        if response.status_code != 200:
+            raise exceptions.ZendeskException('getting data from {} failed. status was {} and message {}'
+                                              .format(url, response.status_code, response.text))
+        return response.json()
+
+    def put(self, url, data):
+        return self.send_request(requests.put, url, data)
+
+    def post(self, url, data):
+        return self.send_request(requests.post, url, data)
+
+    def send_request(self, request_fn, url, data):
+        url = self.url_for(url)
+        logging.debug('sending request to %s', url)
+        response = request_fn(url, data=json.dumps(data),
+                              auth=(self.user, self.password),
+                              headers={'Content-type': 'application/json'})
+        if response.status_code not in [200, 201]:
+            raise exceptions.ZendeskException('sending requests at {} failed. status was {} and message {}'
+                                              .format(url, response.status_code, response.text))
+        return response.json()
+
+    def delete(self, url):
+        url = self.url_for(url)
+        response = requests.delete(url, auth=(self.user, self.password))
+        return response.status_code == 200
+
+
 class ZendeskService(object):
 
     """
     Handles all requests to Zendesk
     """
-    DEFAULT_URL = 'https://{}.zendesk.com/hc/api/v2/{}'
 
-    def __init__(self, options):
+    def __init__(self, req=None):
         super().__init__()
-        self.options = options
-
-    def url_for(self, path):
-        return ZendeskService.DEFAULT_URL.format(self.options['company_name'], path)
-
-    def _fetch(self, url):
-        response = requests.get(url, auth=(self.options['user'], self.options['password']))
-
-        if response.status_code == 404:
-            return {}
-        if response.status_code != 200:
-            raise exceptions.ZendeskException('there was a problem fetching data from {}. status was {} and message {}'
-                                              .format(url, response.status_code, response.text))
-        return response.json()
+        self.req = req
 
     def fetch_categories(self):
-        url = self.url_for('categories.json')
-        logging.debug('fetching categories from %s', url)
-        return self._fetch(url)['categories']
+        print(type(self.req))
+        return self.req.get('categories.json')['categories']
 
     def fetch_sections(self, category_id):
-        url = self.url_for('categories/{}/sections.json'.format(category_id))
-        logging.debug('fetching sections from %s', url)
-        return self._fetch(url)['sections']
+        return self.req.get('categories/{}/sections.json'.format(category_id))['sections']
 
     def fetch_articles(self, section_id):
-        url = self.url_for('sections/{}/articles.json'.format(section_id))
-        logging.debug('fetching articles from %s', url)
-        return self._fetch(url)['articles']
+        return self.req.get('sections/{}/articles.json'.format(section_id))['articles']
 
     def update_category(self, category):
+        logging.debug('updating category')
         return self._update_group(category, 'categories/{}/translations{}.json',
                                   'categories/{}/translations/missing.json')
 
     def update_section(self, section):
+        logging.debug('updating section')
         return self._update_group(section, 'sections/{}/translations{}.json', 'sections/{}/translations/missing.json')
 
     def update_article(self, article, cdn_path):
+        logging.debug('updating article')
         translation_url = 'articles/{}/translations{}.json'
         article_id = article.zendesk_id
         self._disable_article_comments(article)
         translations = self._article_translations(article.translations, cdn_path)
-        missing_url = self.url_for('articles/{}/translations/missing.json'.format(article_id))
+        missing_url = 'articles/{}/translations/missing.json'
         return self._translate(translation_url, missing_url, article_id, translations)
 
     def _disable_article_comments(self, article):
         article_id = article.zendesk_id
-        url = self.url_for('articles/{}.json'.format(article_id))
         data = {
             'comments_disabled': article.comments_disabled
         }
-        requests.put(url, data=json.dumps(data), auth=(self.options['user'], self.options['password']),
-                     headers={'Content-type': 'application/json'})
+        self.req.put('articles/{}.json'.format(article_id), data)
 
     def _update_group(self, group, url, missing_url):
         group_id = group.zendesk_id
         translations = self._group_translations(group.translations)
-        full_missing_url = self.url_for(missing_url.format(group_id))
-        return self._translate(url, full_missing_url, group_id, translations)
+        return self._translate(url, missing_url, group_id, translations)
 
     def _group_translations(self, translations):
         result = []
@@ -158,34 +185,21 @@ class ZendeskService(object):
         return result
 
     def _translate(self, url, missing_url, item_id, translations):
-        missing_locales = self._missing_locales(missing_url)
+        missing_locales = self.req.get(missing_url.format(item_id))['locales']
         logging.debug('missing locales for %s are %s', item_id, missing_locales)
         for translation in translations:
             locale = utils.to_zendesk_locale(translation['locale'])
             if locale in missing_locales:
-                create_url = self.url_for(url.format(item_id, ''))
-                logging.debug('creating translation at %s', create_url)
-                self._send_translate_request(create_url, {'translation': translation}, requests.post)
+                self.req.send_request(
+                    requests.post, url.format(item_id, ''), {'translation': translation})['translation']
             else:
-                update_url = self.url_for(url.format(item_id, '/' + locale))
-                if self._has_content_changed(update_url, translation):
-                    logging.debug('updating translation at %s', update_url)
-                    self._send_translate_request(update_url, translation, requests.put)
+                if self._has_content_changed(url.format(item_id, ''), translation):
+                    self.req.send_request(requests.put, url.format(item_id, '/' + locale), translation)['translation']
                 else:
-                    logging.debug('skipping as nothing changed for translation %s', update_url)
-
-    def _send_translate_request(self, url, translation_data, request_fn):
-        response = request_fn(url, data=json.dumps(translation_data),
-                              auth=(self.options['user'], self.options['password']),
-                              headers={'Content-type': 'application/json'})
-        if response.status_code not in [200, 201]:
-            raise exceptions.ZendeskException('there was a problem uploading translations at {}. status was {} and message {}'
-                                              .format(url, response.status_code, response.text))
-        response_data = response.json()
-        return response_data['translation']
+                    logging.debug('skipping as nothing changed for translation %s', url.format(item_id, ''))
 
     def _has_content_changed(self, url, translation):
-        content = self._fetch(url).get('translation', {})
+        content = self.req.get(url).get('translation', {})
         for key in ['body', 'title']:
             content_body = content.get(key, '')
             content_hash = hashlib.md5(content_body.encode('utf-8'))
@@ -194,93 +208,69 @@ class ZendeskService(object):
                 return True
         return False
 
-    def _missing_locales(self, url):
-        response = requests.get(url, auth=(self.options['user'], self.options['password']),
-                                headers={'Content-type': 'application/json'})
-
-        if response.status_code != 200:
-            return {}
-        response_data = response.json()
-        return response_data['locales']
-
-    def _create(self, url, data):
-        response = requests.post(url, data=json.dumps(data), auth=(self.options['user'], self.options['password']),
-                                 headers={'Content-type': 'application/json'})
-        if response.status_code != 201:
-            raise exceptions.ZendeskException('there was a problem creating an item at {}. status was {} and message {}'
-                                              .format(url, response.status_code, response.text))
-        return response.json()
+    def available_locales(self):
+        return self.req.get('locales.json')['locales']
 
     def create_category(self, translations):
-        url = self.url_for('categories.json')
-        logging.debug('creating new category at %s', url)
+        url = 'categories.json'
+        logging.debug('creating new category')
         data = {
             'category': {
                 'translations': self._group_translations(translations)
             }
         }
-        return self._create(url, data)['category']
+        return self.req.post(url, data)['category']
 
     def create_section(self, category_id, translations):
-        url = self.url_for('categories/{}/sections.json'.format(category_id))
-        logging.debug('creating new section at %s', url)
+        url = 'categories/{}/sections.json'.format(category_id)
+        logging.debug('creating new section')
         data = {
             'section': {
                 'translations': self._group_translations(translations)
             }
         }
-        return self._create(url, data)['section']
+        return self.req.post(url, data)['section']
 
     def create_article(self, section_id, cdn_path, comments_disabled, translations):
-        url = self.url_for('sections/{}/articles.json'.format(section_id))
-        logging.debug('creating new article at %s', url)
+        url = 'sections/{}/articles.json'.format(section_id)
+        logging.debug('creating new article')
         data = {
             'article': {
                 'translations': self._article_translations(translations, cdn_path),
                 'comments_disabled': comments_disabled
             }
         }
-        return self._create(url, data)['article']
+        return self.req.post(url, data)['article']
 
     def delete_article(self, article_id):
-        url = self.url_for('articles/{}.json'.format(article_id))
-        logging.debug('deleting article from %s', url)
-        response = requests.delete(url, auth=(self.options['user'], self.options['password']))
-        return response.status_code == 200
+        logging.debug('deleting article')
+        return self.req.delete('articles/{}.json'.format(article_id))
 
     def delete_section(self, section_id):
-        url = self.url_for('sections/{}.json'.format(section_id))
-        logging.debug('deleting section from %s', url)
-        response = requests.delete(url, auth=(self.options['user'], self.options['password']))
-        return response.status_code == 200
+        logging.debug('deleting section')
+        return self.req.delete('sections/{}.json'.format(section_id))
 
     def delete_category(self, category_id):
-        url = self.url_for('categories/{}.json'.format(category_id))
-        logging.debug('deleting category from %s', url)
-        response = requests.delete(url, auth=(self.options['user'], self.options['password']))
-        return response.status_code == 200
+        logging.debug('deleting category')
+        return self.req.delete('categories/{}.json'.format(category_id))
 
     def move_article(self, article_id, section_id):
-        url = self.url_for('articles/{}.json'.format(article_id))
-        logging.debug('moving article %s', url)
+        logging.debug('moving article')
         data = {
             'article': {
                 'section_id': section_id
             }
         }
-        requests.put(url, data=json.dumps(data), auth=(self.options['user'], self.options['password']),
-                     headers={'Content-type': 'application/json'})
+        self.req.put('articles/{}.json'.format(article_id), data)
 
     def move_section(self, section_id, category_id):
-        url = self.url_for('sections/{}.json'.format(section_id))
-        logging.debug('moving section %s', url)
+        logging.debug('moving section')
         data = {
             'section': {
                 'category_id': category_id
             }
         }
-        requests.put(url, data=json.dumps(data), auth=(self.options['user'], self.options['password']),
-                     headers={'Content-type': 'application/json'})
+        self.req.put('sections/{}.json'.format(section_id), data)
 
 
 class WebTranslateItService(object):
@@ -290,8 +280,8 @@ class WebTranslateItService(object):
     """
     DEFAULT_URL = 'https://webtranslateit.com/api/projects/{}/{}'
 
-    def __init__(self, options):
-        self.api_key = options['webtranslateit_api_key']
+    def __init__(self):
+        self.api_key = ''
 
     def url_for(self, path):
         return WebTranslateItService.DEFAULT_URL.format(self.api_key, path)
@@ -306,8 +296,8 @@ class WebTranslateItService(object):
                                      files={'file': file})
 
             if response.status_code == 200:
-                return response.text
-            return None
+                return response.text.strip()
+            return ''
 
     def delete(self, file_ids):
         for file_id in file_ids:
@@ -323,3 +313,7 @@ class WebTranslateItService(object):
             requests.put(url,
                          data={'file': normalized_new_path, 'name': normalized_new_path},
                          files={'file': file})
+
+filesystem = FilesystemService()
+zendesk = ZendeskService()
+translate = WebTranslateItService()
