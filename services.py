@@ -112,7 +112,6 @@ class ZendeskService(object):
         self.req = req
 
     def fetch_categories(self):
-        print(type(self.req))
         return self.req.get('categories.json')['categories']
 
     def fetch_sections(self, category_id):
