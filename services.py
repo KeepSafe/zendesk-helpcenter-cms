@@ -86,7 +86,7 @@ class ZendeskRequest(object):
 
     def send_request(self, request_fn, url, data):
         url = self.url_for(url)
-        logging.debug('sending request to %s', url)
+        logging.debug('sending request to %s with %s', url, data)
         response = request_fn(url, data=json.dumps(data),
                               auth=(self.user, self.password),
                               headers={'Content-type': 'application/json'})
@@ -155,31 +155,41 @@ class ZendeskService(object):
         for locale, filepath in translations.items():
             with open(filepath, 'r') as file:
                 file_data = json.load(file)
-                translation = {
-                    'title': file_data['name'] or '',
-                    'body': file_data['description'] or '',
-                    'locale': utils.to_zendesk_locale(locale or utils.DEFAULT_LOCALE)
-                }
-                result.append(translation)
-        logging.debug('translations for group %s are %s', filepath, result)
+                if file_data['name']:
+                    translation = {
+                        'title': file_data['name'],
+                        'body': file_data['description'],
+                        'locale': utils.to_zendesk_locale(locale or utils.DEFAULT_LOCALE)
+                    }
+                    result.append(translation)
+                else:
+                    logging.error('missing name for %s', filepath)
+            logging.debug('translations for group %s are %s', filepath, result)
         return result
 
     def _article_translations(self, translations, cdn_path):
         result = []
         for locale, (content_filepath, body_filepath) in translations.items():
-            with open(content_filepath, 'r') as file:
-                file_data = json.load(file)
-                article_name = file_data['name']
-            with open(body_filepath, 'r') as file:
-                file_data = file.read()
-                file_data = utils.convert_to_cdn_path(cdn_path, file_data)
-                article_body = markdown.markdown(file_data)
-            translation = {
-                'title': article_name or '',
-                'body': article_body or '',
-                'locale': utils.to_zendesk_locale(locale or utils.DEFAULT_LOCALE)
-            }
-            result.append(translation)
+            article_name = ''
+            article_body = ''
+            if os.path.exists(content_filepath):
+                with open(content_filepath, 'r') as file:
+                    file_data = json.load(file)
+                    article_name = file_data['name']
+            if os.path.exists(body_filepath):
+                with open(body_filepath, 'r') as file:
+                    file_data = file.read()
+                    file_data = utils.convert_to_cdn_path(cdn_path, file_data)
+                    article_body = markdown.markdown(file_data)
+            if article_name:
+                translation = {
+                    'title': article_name,
+                    'body': article_body,
+                    'locale': utils.to_zendesk_locale(locale or utils.DEFAULT_LOCALE)
+                }
+                result.append(translation)
+            else:
+                logging.error('missing name for %s', content_filepath)
         logging.debug('translations for article %s are %s', content_filepath, result)
         return result
 
@@ -272,6 +282,35 @@ class ZendeskService(object):
         self.req.put('sections/{}.json'.format(section_id), data)
 
 
+class WebTranslateItRequest(object):
+
+    def __init__(self, api_key):
+        self.api_key = api_key
+
+    def url_for(self, path):
+        return WebTranslateItService.DEFAULT_URL.format(self.api_key, path)
+
+    def post(self, url, data, files=None):
+        self._send_request(requests.post, url, data, files)
+
+    def put(self, url, data, files=None):
+        self._send_request(requests.put, url, data, files)
+
+    def _send_request(self, method, url, data, files):
+        url = self.url_for(url)
+        logging.debug('upload file for transaltion to %s', url)
+        response = method(url, data=data, files=files)
+        if response.status_code != 200:
+            logging.warning('there was a problem with request for %s, status is %s with message %s',
+                            url, response.status_code, response.message)
+        return response.text.strip()
+
+    def delete(self, url):
+        url = self.url_for(url)
+        logging.debug('removing file from {}', url)
+        requests.delete(url)
+
+
 class WebTranslateItService(object):
 
     """
@@ -279,39 +318,26 @@ class WebTranslateItService(object):
     """
     DEFAULT_URL = 'https://webtranslateit.com/api/projects/{}/{}'
 
-    def __init__(self):
-        self.api_key = ''
-
-    def url_for(self, path):
-        return WebTranslateItService.DEFAULT_URL.format(self.api_key, path)
+    def __init__(self, req=None):
+        self.req = req
 
     def create(self, filepath):
         with open(filepath, 'r') as file:
             normalized_filepath = os.path.relpath(filepath).replace('\\', '/')
-            url = self.url_for('files')
-            logging.debug('upload file %s for transaltion to %s', normalized_filepath, url)
-            response = requests.post(url,
-                                     data={'file': normalized_filepath, 'name': normalized_filepath},
-                                     files={'file': file})
-
-            if response.status_code == 200:
-                return response.text.strip()
-            return ''
+            data = {'file': normalized_filepath, 'name': normalized_filepath}
+            files = {'file': file}
+            self.req.post('files', data, files)
 
     def delete(self, file_ids):
         for file_id in file_ids:
-            url = self.url_for('files/' + file_id)
-            logging.debug('removing file {} from {}', file_id, url)
-            requests.delete(url)
+            self.req.delete('files/' + file_id)
 
     def move(self, file_id, new_path):
         with open(new_path, 'r') as file:
             normalized_new_path = new_path.replace('\\', '/')
-            url = self.url_for('files/{}/locales/en'.format(file_id))
-            logging.debug('update file %s for transaltion', normalized_new_path)
-            requests.put(url,
-                         data={'file': normalized_new_path, 'name': normalized_new_path},
-                         files={'file': file})
+            data = {'file': normalized_new_path, 'name': normalized_new_path}
+            files = {'file': file}
+            self.req.put('files/{}/locales/en'.format(file_id), data, files)
 
 filesystem = FilesystemService()
 zendesk = ZendeskService()

@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, mock_open
 from unittest import TestCase
 import tempfile
 import services
@@ -54,3 +54,4 @@ class TestFilesystemService(TestCase):
             actual = fp.read()
 
         self.assertEqual('{\n    "1": "test"\n}', actual)
+

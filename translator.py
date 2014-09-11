@@ -87,7 +87,7 @@ class ExportTask(AbstractTask):
         logging.info('executing export task...')
         root = self.options['root_folder']
         category_paths = [os.path.join(root, name) for name in os.listdir(root)
-                          if not os.path.isfile(os.path.join(root, name))]
+                          if os.path.isdir(os.path.join(root, name)) and not name.startswith('.')]
         for category_path in category_paths:
             category = items.Group(category_path)
             category_id = category.zendesk_id

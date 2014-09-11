@@ -16,7 +16,7 @@ Python script for zendesk helpcenter translations.
 
 ## Usage
 
-Below is a description of all available commands. You can also type `zendesk-help-cms -h` and `zendesk-help-cms [command] -h` to see help message in the console.
+Type `zendesk-help-cms -h` and `zendesk-help-cms [command] -h` to see help message in the console.
 
 ### Configuration
 
