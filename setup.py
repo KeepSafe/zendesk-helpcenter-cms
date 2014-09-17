@@ -20,11 +20,11 @@ setup(name='zendesk-helpcenter-cms',
       author_email='support@getkeepsafe.com',
       url='https://github.com/KeepSafe/zendesk-helpcenter-cms/',
       license='Apache',
-      py_modules=['translator', 'services', 'items', 'exceptions', 'utils'],
+      py_modules=['main', 'model', 'translate', 'filesystem', 'zendesk', 'utils'],
       namespace_packages=[],
       install_requires = ['Markdown==2.4.1', 'html2text==2014.7.3', 'requests==2.3.0'],
       entry_points={
           'console_scripts': [
-              'zendesk-help-cms = translator:main']
+              'zendesk-help-cms = main:main']
       },
       include_package_data = False)

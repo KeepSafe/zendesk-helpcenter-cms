@@ -1,8 +1,6 @@
 import unicodedata
-import json
 import re
 
-DEFAULT_LOCALE = 'en-US'
 IMAGE_CDN_PATTERN = r'(!\[.*?\]\()\$IMAGE_ROOT(.*?(?:\s?\".*?\")?\))'
 
 
