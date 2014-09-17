@@ -5,7 +5,6 @@ import re
 import shutil
 
 import model
-import utils
 
 GROUP_TRANSLATION_PATTERN = '{}.([a-zA-Z-]{{2,5}}){}'
 
@@ -44,10 +43,16 @@ class FilesystemClient(object):
             return {}
 
     def read_directories(self, path):
-        return [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d)) and not d.startswith('.')]
+        if os.path.exists(path):
+            return [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d)) and not d.startswith('.')]
+        else:
+            return []
 
     def read_files(self, path):
-        return [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+        if os.path.exists(path):
+            return [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+        else:
+            return []
 
     def remove(self, filepath):
         os.remove(filepath)
@@ -171,7 +176,6 @@ class Loader(object):
 
     def _fill_articles(self, section):
         articles_path = model.Article.path_from_section(section)
-        os.makedirs(articles_path, exist_ok=True)
         article_names = self._filter_article_names(self.fs.read_files(articles_path))
         for article_name in article_names:
             article = self._load_article(section, article_name)

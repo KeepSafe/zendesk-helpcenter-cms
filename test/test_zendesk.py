@@ -4,6 +4,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec
 
 import zendesk
+import filesystem
 from . import fixtures
 
 
@@ -56,7 +57,8 @@ class TestPusher(TestCase):
 
     def setUp(self):
         self.req = create_autospec(zendesk.ZendeskRequest)
-        self.pusher = zendesk.Pusher(self.req)
+        self.fs = create_autospec(filesystem.FilesystemClient)
+        self.pusher = zendesk.Pusher(self.req, self.fs, 'dummy_path')
         self.category = fixtures.category_with_translations()
 
     def test_push_create(self):
@@ -64,23 +66,25 @@ class TestPusher(TestCase):
         self.pusher.push([self.category])
 
         self.req.post.assert_any_call('categories/category id/translations.json',
-                                      {'title': 'dummy translation name', 'body': 'dummy translation description',
-                                       'locale': 'pl'})
+                                         {'translation': {'title': 'dummy translation name',
+                                                          'locale': 'pl', 'body': 'dummy translation description'}})
         self.req.post.assert_any_call('sections/section id/translations.json',
-                                      {'title': 'dummy translation name', 'body': 'dummy translation description',
-                                       'locale': 'pl'})
+                                         {'translation': {'title': 'dummy translation name',
+                                                          'body': 'dummy translation description', 'locale': 'pl'}})
         self.req.post.assert_any_call('articles/article id/translations.json',
-                                      {'locale': 'pl', 'title': 'dummy name', 'body': 'dummy body'})
+                                         {'translation': {'locale': 'pl', 'title': 'dummy name',
+                                                          'body': '<p>dummy body</p>'}})
 
     def test_push_update(self):
         self.req.get = MagicMock(return_value={'locales': []})
         self.pusher.push([self.category])
 
         self.req.put.assert_any_call('categories/category id/translations/pl.json',
-                                     {'title': 'dummy translation name', 'body': 'dummy translation description',
-                                      'locale': 'pl'})
+                                     {'translation': {'locale': 'pl', 'title': 'dummy translation name',
+                                                      'body': 'dummy translation description'}})
         self.req.put.assert_any_call('sections/section id/translations/pl.json',
-                                     {'title': 'dummy translation name', 'body': 'dummy translation description',
-                                      'locale': 'pl'})
+                                     {'translation': {'locale': 'pl', 'title': 'dummy translation name',
+                                                      'body': 'dummy translation description'}})
         self.req.put.assert_any_call('articles/article id/translations/pl.json',
-                                     {'locale': 'pl', 'title': 'dummy name', 'body': 'dummy body'})
+                                     {'translation': {'locale': 'pl', 'title': 'dummy name',
+                                                      'body': '<p>dummy body</p>'}})

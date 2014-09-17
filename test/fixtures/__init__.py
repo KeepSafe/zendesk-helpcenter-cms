@@ -2,11 +2,11 @@ import model
 
 
 def simple_category():
-    category = model.Category('category', 'category desc')
+    category = model.Category('category', 'category desc', 'category')
     category.meta = {'id': 'category id', 'webtranslateit_ids': ['category translate id']}
-    section = model.Section(category, 'section', 'section desc')
+    section = model.Section(category, 'section', 'section desc', 'section')
     section.meta = {'id': 'section id', 'webtranslateit_ids': ['section translate id']}
-    article = model.Article(section, 'article', 'body')
+    article = model.Article(section, 'article', 'body', 'article')
     article.meta = {'id': 'article id', 'webtranslateit_ids': ['body translate id', 'article translate id']}
     category.sections.append(section)
     section.articles.append(article)

@@ -43,7 +43,8 @@ class TestLoader(TestCase):
 
     def setUp(self):
         self.fs = create_autospec(filesystem.FilesystemClient)
-        self.loader = filesystem.Loader(self.fs, 'dummy_folder')
+        self.fs.root_folder = 'dummy_root'
+        self.loader = filesystem.Loader(self.fs)
         self.fs.read_directories.return_value = ['dummy_group']
         self.fs.read_files.return_value = ['dummy-article.mkdown']
         self.fs.read_json.return_value = {'name': 'dummy name', 'description': 'dummy descrition'}
@@ -83,9 +84,10 @@ class TestLoader(TestCase):
 
         translations = self.loader._group_translations(category)
 
-        self.assertEqual(1, len(translations))
+        self.assertEqual(2, len(translations))
         self.assertEqual('dummy name', translations[0].name)
         self.assertEqual('dummy descrition', translations[0].description)
+        self.assertEqual('en-US', translations[1].locale)
         self.assertEqual('pl', translations[0].locale)
 
     def test_article_translations(self):
@@ -95,7 +97,8 @@ class TestLoader(TestCase):
 
         translations = self.loader._article_translations(article)
 
-        self.assertEqual(1, len(translations))
+        self.assertEqual(2, len(translations))
         self.assertEqual('dummy name', translations[0].name)
         self.assertEqual('dummy body', translations[0].body)
-        self.assertEqual('pl', translations[0].locale)
+        self.assertEqual('en-US', translations[0].locale)
+        self.assertEqual('pl', translations[1].locale)
