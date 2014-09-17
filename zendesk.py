@@ -196,6 +196,30 @@ class Remover(object):
             self._remove_category(item)
 
 
+class Mover(object):
+    def __init__(self, req, image_cdn):
+        self.req = req
+        self.image_cdn = image_cdn
+
+    def _move_article(self, article):
+        self.req.put('articles/{}.json'.format(article.zendesk_id), article.to_dict(self.image_cdn))
+
+    def _move_section(self, section):
+        self.req.put('sections/{}.json'.format(section.zendesk_id))
+
+    def _move_category(self, category):
+        self.req.put('categories/{}.json'.format(category.zendesk_id))
+
+    def move(self, item):
+        # TODO to be improved, read above
+        if isinstance(item, model.Article):
+            self._remove_article(item)
+        if isinstance(item, model.Section):
+            self._remove_section(item)
+        if isinstance(item, model.Category):
+            self._remove_category(item)
+
+
 class Doctor(object):
 
     def __init__(self, req, fs):
@@ -261,6 +285,11 @@ def pusher(company_name, user, password, fs, image_cdn):
 def remover(company_name, user, password):
     req = ZendeskRequest(company_name, user, password)
     return Remover(req)
+
+
+def mover(company_name, user, password, image_cdn):
+    req = ZendeskRequest(company_name, user, password)
+    return Mover(req, image_cdn)
 
 
 def doctor(company_name, user, password, fs):

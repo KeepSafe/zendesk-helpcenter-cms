@@ -47,7 +47,7 @@ class RemoveTask(object):
         print('Running remove task...')
         path = os.path.join(args['root_folder'], args['path'])
 
-        if not os.path.exists:
+        if not os.path.exists(path):
             logging.error('Provided path %s does not exist', path)
             return
 
@@ -55,6 +55,27 @@ class RemoveTask(object):
         zendesk.remover(args['company_name'], args['user'], args['password']).remove(item)
         translate.remover(args['webtranslateit_api_key']).remove(item)
         filesystem.remover(args['root_folder']).remove(item)
+        print('Done')
+
+
+class MoveTask(object):
+
+    def execute(self, args):
+        print('Running move task...')
+        src = os.path.join(args['root_folder'], args['source'])
+        dest = os.path.join(args['root_folder'], args['destination'])
+
+        if not os.path.exists(src):
+            logging.error('Provided source %s does not exist', src)
+            return
+        if os.path.exists(dest):
+            logging.error('Provided destination %s already exist', dest)
+            return
+
+        item = filesystem.loader(args['root_folder']).load_from_path(src)
+        zendesk.mover(args['company_name'], args['user'], args['password'], args['image_cdn']).move(item, dest)
+        translate.mover(args['webtranslateit_api_key']).move(item, dest)
+        filesystem.mover(args['root_folder']).move(item, dest)
         print('Done')
 
 
@@ -114,8 +135,8 @@ def parse_args():
     # Task subparser settings
     task_parsers['remove'].add_argument('path',
                                         help='Set path for removing an item. The path is relative to the root folder')
-    # task_parsers['move'].add_argument('source', help='Set source section/article')
-    # task_parsers['move'].add_argument('destination', help='Set destination category/section')
+    task_parsers['move'].add_argument('source', help='Set source section/article')
+    task_parsers['move'].add_argument('destination', help='Set destination category/section')
 
     return parser.parse_args()
 

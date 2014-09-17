@@ -120,6 +120,11 @@ class Remover(object):
             self._remove_category(item)
 
 
+class Mover(object):
+    def __init__(self, req):
+        self.req = req
+
+
 class Doctor(object):
     def __init__(self, req):
         self.req = req
@@ -142,6 +147,11 @@ def translator(api_key):
 def remover(api_key):
     req = WebTranslateItRequest(api_key)
     return Remover(req)
+
+
+def mover(api_key):
+    req = WebTranslateItRequest(api_key)
+    return Mover(req)
 
 
 def doctor(api_key):

@@ -87,31 +87,7 @@ class Loader(object):
     def __init__(self, fs):
         self.fs = fs
 
-    def _slugify_name(self, dir_path, name, ext=''):
-        slugify_name = utils.slugify(name)
-        if name.startswith('.'):
-            slugify_name = '.' + slugify_name
-        if name != slugify_name:
-            old_path = os.path.join(dir_path, name + ext)
-            new_path = os.path.join(dir_path, slugify_name + ext)
-            self.fs.move(old_path, new_path)
-        return slugify_name + ext
-
-    def _slugify_category(self, category_path):
-        category_name = self._slugify_name(os.path.dirname(category_path), os.path.basename(category_path))
-        return os.path.join(os.path.dirname(category_path), category_name)
-
-    def _slugify_section(self, category_path, section_name):
-        return self._slugify_name(category_path, section_name)
-
-    def _slugify_article(self, article_path):
-        article_name, article_ext = os.path.splitext(os.path.basename(article_path))
-        article_dir = os.path.dirname(article_path)
-        slugify_article_name = self._slugify_name(article_dir, article_name, article_ext)
-        return os.path.join(article_dir, slugify_article_name)
-
     def _load_category(self, category_path):
-        category_path = self._slugify_category(category_path)
         category_name = os.path.basename(category_path)
         meta_path, content_path = model.Category.filepaths_from_path(category_path)
         meta = self.fs.read_json(meta_path)
@@ -120,23 +96,19 @@ class Loader(object):
         return model.Category.from_dict(meta, content, category_name)
 
     def _load_section(self, category, section_name):
-        slugify_section_name = self._slugify_section(category.path, section_name)
-        meta_path, content_path = model.Section.filepaths_from_path(category, slugify_section_name)
+        meta_path, content_path = model.Section.filepaths_from_path(category, section_name)
         meta = self.fs.read_json(meta_path)
         content = self.fs.read_json(content_path)
         content = content or {'name': section_name}
-        return model.Section.from_dict(category, meta, content, slugify_section_name)
+        return model.Section.from_dict(category, meta, content, section_name)
 
     def _load_article(self, section, article_name):
         meta_path, content_path, body_path = model.Article.filepaths_from_path(section, article_name)
-        meta_path = self._slugify_article(meta_path)
-        content_path = self._slugify_article(content_path)
-        body_path = self._slugify_article(body_path)
         meta = self.fs.read_json(meta_path)
         content = self.fs.read_json(content_path)
         content = content or {'name': article_name}
         body = self.fs.read_text(body_path)
-        return model.Article.from_dict(section, meta, content, body, utils.slugify(article_name))
+        return model.Article.from_dict(section, meta, content, body, article_name)
 
     def _filter_article_names(self, files):
         articles = [a for a in files if a.endswith(model.Article._body_exp)]
@@ -252,13 +224,37 @@ class Remover(object):
         self.fs.remove_dir(section.path)
 
     def remove(self, item):
-        # TODO to be improved, read above
+        # TODO to be improved
         if isinstance(item, model.Article):
             self._remove_article(item)
         if isinstance(item, model.Section):
             self._remove_group(item)
         if isinstance(item, model.Category):
             self._remove_group(item)
+
+
+class Mover(object):
+
+    def __init__(self, fs):
+        self.fs = fs
+
+    def move(self, item, dest):
+        # TODO to be improved
+        if isinstance(item, model.Article):
+            self.fs.move(item.meta_filepath, os.path.join(
+                dest, model.DEFAULT_LOCALE, item.meta_filename + item._meta_exp))
+            for translation in item.translations:
+                content_path = item.content_translation_filepath(translation.locale)
+                self.fs.move(content_path, os.path.join(
+                    dest, translation.locale, item.content_filename + item._content_exp))
+                body_path = item.body_translation_filepath(translation.locale)
+                self.fs.move(body_path, os.path.join(dest, translation.locale, item.content_filename + item._body_exp))
+        if isinstance(item, model.Section):
+            print('Moving category to {}'.format(dest))
+            self.fs.move(item.path, dest)
+        if isinstance(item, model.Category):
+            print('Moving category to {}'.format(dest))
+            self.fs.move(item.path, dest)
 
 
 class Doctor(object):
@@ -288,12 +284,15 @@ class Doctor(object):
 
     def fix_category(self, category):
         self._fix_item_content(category)
+        self._slugify_group(category)
 
     def fix_section(self, section):
         self._fix_item_content(section)
+        self._slugify_group(section)
 
     def fix_article(self, article):
         self._fix_item_content(article)
+        self._slugify_article(article)
 
 
 def saver(root_folder):
@@ -309,6 +308,11 @@ def loader(root_folder):
 def remover(root_folder):
     fs = FilesystemClient(root_folder)
     return Remover(fs)
+
+
+def mover(root_folder):
+    fs = FilesystemClient(root_folder)
+    return Mover(fs)
 
 
 def doctor(root_folder):
