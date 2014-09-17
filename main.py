@@ -112,6 +112,7 @@ tasks = {
     'translate': TranslateTask(),
     'export': ExportTask(),
     'remove': RemoveTask(),
+    'move': MoveTask(),
     'doctor': DoctorTask()
 }
 
