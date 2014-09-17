@@ -288,15 +288,12 @@ class Doctor(object):
 
     def fix_category(self, category):
         self._fix_item_content(category)
-        self._slugify_group(category)
 
     def fix_section(self, section):
         self._fix_item_content(section)
-        self._slugify_group(section)
 
     def fix_article(self, article):
         self._fix_item_content(article)
-        self._slugify_article(article)
 
 
 def saver(root_folder):
