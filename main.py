@@ -107,13 +107,73 @@ class DoctorTask(object):
 
         print('Done')
 
+
+class ConfigTask(object):
+
+    """
+    Creates config file in the current directory by asking a user to provide the data.
+    """
+
+    def _read_existing_config(self):
+        if not os.path.exists(CONFIG_FILE):
+            return {}
+
+        print('There is a config alread present, press ENTER to accept already existing value')
+        config = configparser.ConfigParser()
+        config.read(CONFIG_FILE)
+        return dict(config[config.default_section])
+
+    def _read_config_from_input(self, default_config):
+        if default_config:
+            default_company_name = default_config.get('company_name', '')
+            company_name = input('Zendesk\'s company name ({}):'.format(default_company_name)) or default_company_name
+            default_user = default_config.get('user', '')
+            user = input('Zendesk\'s user name ({}):'.format(default_user)) or default_user
+            default_password = default_config.get('password', '')
+            password = input('Zendesk\'s password ({}):'.format(default_password)) or default_password
+            default_api_key = default_config.get('webtranslateit_api_key', '')
+            webtranslateit_api_key = input(
+                'WebTranslateIt private API key ({}):'.format(default_api_key)) or default_api_key
+            default_image_cdn = default_config.get('image_cdn', '')
+            image_cdn = input('CDN path for storing images ({}):'.format(default_image_cdn)) or default_image_cdn
+            default_disable_article_comments = default_config.get('disable_article_comments', '')
+            disable_article_comments = input('Disable article comments ({}):'.format(default_disable_article_comments))
+            disable_article_comments = disable_article_comments or default_disable_article_comments
+        else:
+            company_name = input('Zendesk\'s company name:')
+            user = input('Zendesk\'s user name:')
+            password = input('Zendesk\'s password:')
+            webtranslateit_api_key = input('WebTranslateIt private API key:')
+            image_cdn = input('CDN path for storing images:')
+            disable_article_comments = input('Disable article comments:')
+
+        return {
+            'company_name': company_name,
+            'user': user,
+            'password': password,
+            'webtranslateit_api_key': webtranslateit_api_key,
+            'image_cdn': image_cdn,
+            'disable_article_comments': disable_article_comments
+        }
+
+    def execute(self, args):
+        existing_config = self._read_existing_config()
+        user_config = self._read_config_from_input(existing_config)
+
+        config = configparser.ConfigParser()
+        config[config.default_section] = user_config
+
+        with open(CONFIG_FILE, 'w') as config_file:
+            config.write(config_file)
+
 tasks = {
     'import': ImportTask(),
     'translate': TranslateTask(),
     'export': ExportTask(),
     'remove': RemoveTask(),
     'move': MoveTask(),
-    'doctor': DoctorTask()
+    'doctor': DoctorTask(),
+    'config': ConfigTask()
 }
 
 
