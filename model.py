@@ -152,8 +152,9 @@ class ArticleTranslation(object):
         self.body = body
 
     def to_dict(self, image_cdn=None):
+        body = self.body
         if image_cdn:
-            body = utils.convert_to_cdn_path(image_cdn, self.body)
+            body = utils.convert_to_cdn_path(image_cdn, body)
         body = markdown.markdown(body)
 
         return {
