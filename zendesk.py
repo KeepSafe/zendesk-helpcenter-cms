@@ -9,7 +9,7 @@ import utils
 
 
 class ZendeskRequest(object):
-    _default_url = 'https://{}.zendesk.com/hc/api/v2/{}'
+    _default_url = 'https://{}.zendesk.com/api/v2/help_center/{}'
 
     def __init__(self, company_name, user, password):
         super().__init__()
@@ -226,14 +226,36 @@ class Doctor(object):
         self.req = req
         self.fs = fs
 
-    def _fetch_item(self, item, key):
-        res = self.req.get('{}.json'.format(key))
-        zendesk_items = res[key]
+    def _fetch_category(self, item):
+        res = self.req.get('categories.json')
+        zendesk_items = res['categories']
         for zendesk_item in zendesk_items:
             if zendesk_item['name'] == item.name:
                 item.meta = zendesk_item
-                self.fs.save_json(item.meta_filepath, item.meta)
+                self.fs.save_json(item.meta_filepath, zendesk_item)
                 return True
+        return False
+
+    def _fetch_section(self, item):
+        if item.category.zendesk_id:
+            res = self.req.get('categories/{}/sections.json'.format(item.category.zendesk_id))
+            zendesk_items = res['sections']
+            for zendesk_item in zendesk_items:
+                if zendesk_item['name'] == item.name:
+                    item.meta = zendesk_item
+                    self.fs.save_json(item.meta_filepath, zendesk_item)
+                    return True
+        return False
+
+    def _fetch_article(self, item):
+        if item.section.zendesk_id:
+            res = self.req.get('sections/{}/articles.json'.format(item.section.zendesk_id))
+            zendesk_items = res['articles']
+            for zendesk_item in zendesk_items:
+                if zendesk_item['name'] == item.name:
+                    item.meta = zendesk_item
+                    self.fs.save_json(item.meta_filepath, zendesk_item)
+                    return True
         return False
 
     def _exists(self, item, key):
@@ -243,29 +265,33 @@ class Doctor(object):
             return False
         return True
 
-    def _fix_item(self, item, key):
-        if not item.zendesk_id:
-            if self._fetch_item(item, key):
-                print('Zendesk ID is missing but found item with the same name {}.'
-                      ' If this is not corrent you need to fix it manually'.format(item.name))
-        else:
-            if not self._exists(item, key):
-                if self._fetch_item(item, key):
-                    print('Zendesk ID is incorrect but found item with the same name {}.'
-                          ' If this is not corrent you need to fix it manually'.format(item.name))
-                else:
-                    print('Zendesk ID is incorrect but no item with the same name'
-                          ' was found for name {}. Assuming new item'.format(item.name))
-                    self.fs.remove(item.meta_filepath)
+    def _fix_item(self, item, key, fetch_fn):
+        try:
+            if not item.zendesk_id:
+                if fetch_fn(item):
+                    print('Zendesk ID is missing but found item with the same name {}.'
+                          ' If this is not correct you need to fix it manually'.format(item.name))
+            else:
+                if not self._exists(item, key):
+                    if fetch_fn(item):
+                        print('Zendesk ID is incorrect but found item with the same name {}.'
+                              ' If this is not corrent you need to fix it manually'.format(item.name))
+                    else:
+                        print('Zendesk ID is incorrect and no item with the same name'
+                              ' was found for name {}. Assuming new item'.format(item.name))
+                        self.fs.remove(item.meta_filepath)
+                        item.meta = {}
+        except RecordNotFoundError as e:
+            logging.warning(str(e))
 
     def fix_category(self, category):
-        self._fix_item(category, 'categories')
+        self._fix_item(category, 'categories', self._fetch_category)
 
     def fix_section(self, section):
-        self._fix_item(section, 'sections')
+        self._fix_item(section, 'sections', self._fetch_section)
 
     def fix_article(self, article):
-        self._fix_item(article, 'articles')
+        self._fix_item(article, 'articles', self._fetch_article)
 
 
 class RecordNotFoundError(Exception):

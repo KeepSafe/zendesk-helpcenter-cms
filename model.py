@@ -28,7 +28,7 @@ class Base(object):
 
     @property
     def zendesk_id(self):
-        return self._meta.get(self._zendesk_id_key, None)
+        return self._meta.get(self._zendesk_id_key)
 
     @property
     def translate_ids(self):
