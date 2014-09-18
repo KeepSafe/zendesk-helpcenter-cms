@@ -32,6 +32,10 @@ class FilesystemClient(object):
             return ''
 
     def save_json(self, path, data):
+        if os.path.exists(path):
+            new_data = data
+            data = self.read_json(path)
+            data.update(new_data)
         text = json.dumps(data, indent=4, sort_keys=True)
         self.save_text(path, text)
 
@@ -55,10 +59,12 @@ class FilesystemClient(object):
             return []
 
     def remove(self, filepath):
-        os.remove(filepath)
+        if os.path.exists(filepath):
+            os.remove(filepath)
 
     def remove_dir(self, path):
-        shutil.rmtree(path)
+        if os.path.exists(path):
+            shutil.rmtree(path)
 
     def move(self, old_path, new_path):
         if os.path.exists(old_path):
@@ -191,7 +197,7 @@ class Loader(object):
 
     def load_from_path(self, path):
         if os.path.isfile(path):
-            article_name, = os.path.splitext(path)
+            article_name, _ = os.path.splitext(os.path.basename(path))
             section_path = os.path.dirname(os.path.dirname(path))
             section_name = os.path.basename(section_path)
             category_path = os.path.dirname(section_path)

@@ -49,7 +49,7 @@ class ZendeskRequest(object):
         return self._send_request(requests.post, url, data)
 
     def delete(self, url):
-        full_url = self.url_for(url)
+        full_url = self._url_for(url)
         response = requests.delete(full_url, auth=(self.user, self.password))
         return response.status_code == 200
 
@@ -187,13 +187,14 @@ class Remover(object):
         self.req.delete('categories/{}.json'.format(category.zendesk_id))
 
     def remove(self, item):
-        # TODO to be improved, read above
-        if isinstance(item, model.Article):
-            self._remove_article(item)
-        if isinstance(item, model.Section):
-            self._remove_section(item)
-        if isinstance(item, model.Category):
-            self._remove_category(item)
+        if item.zendesk_id:
+            # TODO to be improved, read above
+            if isinstance(item, model.Article):
+                self._remove_article(item)
+            if isinstance(item, model.Section):
+                self._remove_section(item)
+            if isinstance(item, model.Category):
+                self._remove_category(item)
 
 
 class Mover(object):
