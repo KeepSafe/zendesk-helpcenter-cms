@@ -18,10 +18,8 @@ class TestFetcher(TestCase):
 
     def setUp(self):
         req = create_autospec(zendesk.ZendeskRequest)
+        req.get_items.side_effect = lambda *c: load_fixture(c[0].zendesk_group)[c[0].zendesk_group]
         self.fetcher = zendesk.Fetcher(req)
-        self.fetcher._fetch_categories = MagicMock(return_value=load_fixture('categories')['categories'])
-        self.fetcher._fetch_sections = MagicMock(return_value=load_fixture('sections')['sections'])
-        self.fetcher._fetch_articles = MagicMock(return_value=load_fixture('articles')['articles'])
 
     def test_fetch_happy_path(self):
         categories = self.fetcher.fetch()
@@ -58,33 +56,50 @@ class TestPusher(TestCase):
     def setUp(self):
         self.req = create_autospec(zendesk.ZendeskRequest)
         self.fs = create_autospec(filesystem.FilesystemClient)
-        self.pusher = zendesk.Pusher(self.req, self.fs, 'dummy_path')
+        self.pusher = zendesk.Pusher(self.req, self.fs, 'dummy_path', False)
         self.category = fixtures.category_with_translations()
 
     def test_push_create(self):
-        self.req.get = MagicMock(return_value={'locales': ['pl']})
+        self.req.get_missing_locales = MagicMock(return_value=['pl'])
         self.pusher.push([self.category])
 
-        self.req.post.assert_any_call('categories/category id/translations.json',
-                                         {'translation': {'title': 'dummy translation name',
-                                                          'locale': 'pl', 'body': 'dummy translation description'}})
-        self.req.post.assert_any_call('sections/section id/translations.json',
-                                         {'translation': {'title': 'dummy translation name',
-                                                          'body': 'dummy translation description', 'locale': 'pl'}})
-        self.req.post.assert_any_call('articles/article id/translations.json',
-                                         {'translation': {'locale': 'pl', 'title': 'dummy name',
-                                                          'body': '<p>dummy body</p>'}})
+        self.req.post_translation.assert_any_call(self.category,
+                                                  {'translation': {'title': 'dummy translation name', 'locale': 'pl',
+                                                                   'body': 'dummy translation description'}})
+        self.req.post_translation.assert_any_call(self.category.sections[0],
+                                                  {'translation': {'title': 'dummy translation name',
+                                                                   'body': 'dummy translation description',
+                                                                   'locale': 'pl'}})
+        self.req.post_translation.assert_any_call(self.category.sections[0].articles[0],
+                                                  {'translation': {'locale': 'pl', 'title': 'dummy name',
+                                                                   'body': '<p>dummy body</p>'}})
 
     def test_push_update(self):
-        self.req.get = MagicMock(return_value={'locales': []})
+        self.req.get_missing_locales = MagicMock(return_value=[])
+        self.pusher._has_content_changed = MagicMock(return_value=True)
         self.pusher.push([self.category])
 
-        self.req.put.assert_any_call('categories/category id/translations/pl.json',
-                                     {'translation': {'locale': 'pl', 'title': 'dummy translation name',
-                                                      'body': 'dummy translation description'}})
-        self.req.put.assert_any_call('sections/section id/translations/pl.json',
-                                     {'translation': {'locale': 'pl', 'title': 'dummy translation name',
-                                                      'body': 'dummy translation description'}})
-        self.req.put.assert_any_call('articles/article id/translations/pl.json',
-                                     {'translation': {'locale': 'pl', 'title': 'dummy name',
-                                                      'body': '<p>dummy body</p>'}})
+        self.req.put_translation.assert_any_call(self.category, 'pl', {
+                                                 'translation': {'locale': 'pl', 'title': 'dummy translation name',
+                                                                 'body': 'dummy translation description'}})
+        self.req.put_translation.assert_any_call(self.category.sections[0], 'pl', {
+                                                 'translation': {'locale': 'pl', 'title': 'dummy translation name',
+                                                                 'body': 'dummy translation description'}})
+        self.req.put_translation.assert_any_call(self.category.sections[0].articles[0], 'pl', {
+                                                 'translation': {'locale': 'pl', 'title': 'dummy name',
+                                                                 'body': '<p>dummy body</p>'}})
+
+
+class TestDoctor(TestCase):
+
+    def setUp(self):
+        self.req = create_autospec(zendesk.ZendeskRequest)
+        self.fs = create_autospec(filesystem.FilesystemClient)
+        self.service = zendesk.Doctor(self.req, self.fs)
+        self.category = fixtures.simple_category()
+
+    def test_fix_only_if_section_has_category_meta(self):
+        section = self.category.sections[0]
+        self.category.meta = {}
+
+        self.service.fix_section(section)

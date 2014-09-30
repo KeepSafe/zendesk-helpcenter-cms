@@ -22,6 +22,7 @@ class FilesystemClient(object):
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         with open(full_path, 'w') as fp:
             fp.write(data)
+        return data
 
     def read_text(self, path):
         full_path = self._path_for(path)
@@ -38,6 +39,7 @@ class FilesystemClient(object):
             data.update(new_data)
         text = json.dumps(data, indent=4, sort_keys=True)
         self.save_text(path, text)
+        return data
 
     def read_json(self, path):
         text = self.read_text(path)

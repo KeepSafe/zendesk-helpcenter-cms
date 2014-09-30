@@ -87,6 +87,9 @@ class Group(Base):
 
 
 class Category(Group):
+    zendesk_name = 'category'
+    zendesk_group = 'categories'
+
     def __init__(self, name, description, filename):
         super().__init__(name, description, filename)
         self.sections = []
@@ -115,6 +118,8 @@ class Category(Group):
 
 
 class Section(Group):
+    zendesk_name = 'section'
+    zendesk_group = 'sections'
 
     def __init__(self, category, name, description, filename):
         super().__init__(name, description, filename)
@@ -165,6 +170,9 @@ class ArticleTranslation(object):
 
 
 class Article(Base):
+    zendesk_name = 'article'
+    zendesk_group = 'articles'
+
     _body_exp = '.mkdown'
     _meta_pattern = '.article_{}'
 

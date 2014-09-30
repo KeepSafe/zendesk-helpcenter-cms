@@ -37,7 +37,7 @@ class ExportTask(object):
         categories = filesystem.loader(args['root_folder']).load()
         filesystem_client = filesystem.client(args['root_folder'])
         zendesk.pusher(args['company_name'], args['user'], args['password'],
-                       filesystem_client, args['image_cdn']).push(categories)
+                       filesystem_client, args['image_cdn'], args['disable_article_comments']).push(categories)
         print('Done')
 
 
