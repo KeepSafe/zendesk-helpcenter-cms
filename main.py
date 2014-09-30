@@ -87,7 +87,8 @@ class DoctorTask(object):
         filesystem_client = filesystem.client(args['root_folder'])
         filesystem_doctor = filesystem.doctor(args['root_folder'])
         translate_doctor = translate.doctor(args['webtranslateit_api_key'])
-        zendesk_doctor = zendesk.doctor(args['company_name'], args['user'], args['password'], filesystem_client)
+        zendesk_doctor = zendesk.doctor(
+            args['company_name'], args['user'], args['password'], filesystem_client, args['force'])
 
         for category in categories:
             print('Validating category {}'.format(category.name))
@@ -198,6 +199,8 @@ def parse_args():
                                         help='Set path for removing an item. The path is relative to the root folder')
     task_parsers['move'].add_argument('source', help='Set source section/article')
     task_parsers['move'].add_argument('destination', help='Set destination category/section')
+    task_parsers['doctor'].add_argument(
+        '-f', '--force', help='Answer yes to any question', action='store_true', default=False)
 
     return parser.parse_args()
 

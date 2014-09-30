@@ -27,10 +27,10 @@ class ZendeskRequest(object):
         self.password = password
 
     def _url_for(self, path):
-        return self._default_url.format(self.company_name, path)
+        return self._default_url.format(self.company_name, path) + '?per_page=100'
 
     def _translation_url_for(self, path):
-        return self._translations_url.format(self.company_name, path)
+        return self._translations_url.format(self.company_name, path) + 'per_page=100'
 
     def _parse_response(self, response):
         if response.status_code == 404:
@@ -277,10 +277,18 @@ class Doctor(object):
         return True
 
     def _fix_item(self, item, parent=None):
+        # parent is a new item so this is a new item as well
+        if parent and not parent.zendesk_id:
+            if item.zendesk_id:
+                logging.warning('Parent is a new item but Zendesk ID exists. Removing meta...')
+            self.fs.remove(item.meta_filepath)
+            item.meta = {}
+            return
+
         try:
             zendesk_item = self._fetch_item(item, parent)
             if item.zendesk_id:
-                if zendesk_item.get('id') != item.zendesk_id:
+                if zendesk_item and zendesk_item.get('id') != item.zendesk_id:
                     print('Zendesk ID is incorrect but found item with the same name {}.'
                           ' If this is not corrent you need to fix it manually'.format(item.name))
                     item.meta = zendesk_item
@@ -294,8 +302,8 @@ class Doctor(object):
                 if zendesk_item:
                     print('Zendesk ID is missing but found item with the same name {}.'
                           ' If this is not correct you need to fix it manually'.format(item.name))
-                item.meta = zendesk_item
-                self.fs.save_json(item.meta_filepath, zendesk_item)
+                    item.meta = zendesk_item
+                    self.fs.save_json(item.meta_filepath, zendesk_item)
 
         except RecordNotFoundError as e:
             logging.warning(str(e))
@@ -334,6 +342,6 @@ def mover(company_name, user, password, image_cdn):
     return Mover(req, image_cdn)
 
 
-def doctor(company_name, user, password, fs, force=False):
+def doctor(company_name, user, password, fs, force):
     req = ZendeskRequest(company_name, user, password)
     return Doctor(req, fs, force)
