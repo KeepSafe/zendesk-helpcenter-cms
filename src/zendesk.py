@@ -13,11 +13,11 @@ class ZendeskRequest(object):
     _translations_url = 'https://{}.zendesk.com/api/v2/help_center/{}'
 
     item_url = '{}/{}.json'
-    items_url = '{}.json'
-    items_in_group_url = '{}/{}/{}.json'
+    items_url = '{}.json?per_page=100'
+    items_in_group_url = '{}/{}/{}.json?per_page=100'
 
     translation_url = '{}/{}/translations/{}.json'
-    translations_url = '{}/{}/translations.json'
+    translations_url = '{}/{}/translations.json?per_page=100'
     missing_translations_url = '{}/{}/translations/missing.json'
 
     def __init__(self, company_name, user, password):
@@ -27,10 +27,10 @@ class ZendeskRequest(object):
         self.password = password
 
     def _url_for(self, path):
-        return self._default_url.format(self.company_name, path) + '?per_page=100'
+        return self._default_url.format(self.company_name, path)
 
     def _translation_url_for(self, path):
-        return self._translations_url.format(self.company_name, path) + 'per_page=100'
+        return self._translations_url.format(self.company_name, path)
 
     def _parse_response(self, response):
         if response.status_code == 404:

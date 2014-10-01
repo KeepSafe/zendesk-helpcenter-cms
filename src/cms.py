@@ -193,14 +193,14 @@ def parse_args():
     parser.add_argument('-r', '--root_folder',
                         help='Article\'s root folder, default: .',
                         default=os.getcwd())
+    parser.add_argument('-f', '--force', help='Don\'t ask questions. YES all the way',
+                        action='store_true', default=False)
 
     # Task subparser settings
     task_parsers['remove'].add_argument('path',
                                         help='Set path for removing an item. The path is relative to the root folder')
     task_parsers['move'].add_argument('source', help='Set source section/article')
     task_parsers['move'].add_argument('destination', help='Set destination category/section')
-    task_parsers['doctor'].add_argument(
-        '-f', '--force', help='Answer yes to any question', action='store_true', default=False)
 
     return parser.parse_args()
 
