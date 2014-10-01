@@ -1,12 +1,11 @@
 import os
-from setuptools import setup
+from setuptools import setup, find_packages
 
 version = '0.0.1'
 
 
 def read(f):
     return open(os.path.join(os.path.dirname(__file__), f)).read().strip()
-
 
 setup(name='zendesk-helpcenter-cms',
       version=version,
@@ -20,11 +19,11 @@ setup(name='zendesk-helpcenter-cms',
       author_email='support@getkeepsafe.com',
       url='https://github.com/KeepSafe/zendesk-helpcenter-cms/',
       license='Apache',
-      py_modules=['main', 'model', 'translate', 'filesystem', 'zendesk', 'utils'],
+      packages=find_packages(exclude=['test', 'test.fixtures']),
       namespace_packages=[],
       install_requires = ['Markdown==2.4.1', 'html2text==2014.7.3', 'requests==2.3.0'],
       entry_points={
           'console_scripts': [
-              'zendesk-help-cms = main:main']
+              'zendesk-help-cms = src.cms:main']
       },
       include_package_data = False)

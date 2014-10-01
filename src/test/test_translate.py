@@ -1,8 +1,8 @@
 from unittest import TestCase
 from unittest.mock import create_autospec, mock_open, patch, MagicMock
 
-from test import fixtures
-import translate
+from . import fixtures
+from .. import translate
 
 
 class TestWebTranslateItClient(TestCase):

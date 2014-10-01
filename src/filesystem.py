@@ -4,7 +4,7 @@ import logging
 import re
 import shutil
 
-import model
+from . import model
 
 GROUP_TRANSLATION_PATTERN = '{}.([a-zA-Z-]{{2,5}}){}'
 

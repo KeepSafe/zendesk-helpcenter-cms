@@ -3,9 +3,9 @@ import os
 import logging
 import configparser
 
-import zendesk
-import filesystem
-import translate
+from . import zendesk
+from . import filesystem
+from . import translate
 
 DEFAULE_LOG_LEVEL = 'WARNING'
 CONFIG_FILE = 'translator.config'

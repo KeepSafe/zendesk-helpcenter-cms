@@ -3,8 +3,8 @@ import json
 from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec
 
-import zendesk
-import filesystem
+from .. import zendesk
+from .. import filesystem
 from . import fixtures
 
 

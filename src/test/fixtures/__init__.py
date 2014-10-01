@@ -1,4 +1,4 @@
-import model
+from ... import model
 
 
 def simple_category():
