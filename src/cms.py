@@ -3,9 +3,9 @@ import os
 import logging
 import configparser
 
-from . import zendesk
-from . import filesystem
-from . import translate
+import zendesk
+import filesystem
+import translate
 
 DEFAULE_LOG_LEVEL = 'WARNING'
 CONFIG_FILE = 'translator.config'
@@ -191,7 +191,7 @@ def parse_args():
                         % DEFAULE_LOG_LEVEL,
                         default=DEFAULE_LOG_LEVEL)
     parser.add_argument('-r', '--root_folder',
-                        help='items.Article\'s root folder',
+                        help='Article\'s root folder, default: .',
                         default=os.getcwd())
 
     # Task subparser settings
@@ -224,8 +224,12 @@ def main():
     args = parse_args()
     init_log(args.loglevel)
     options = parse_config(args)
-    task = tasks[options['task']]
-    task.execute(options)
+    task_name = options.get('task')
+    if task_name:
+        task = tasks[task_name]
+        task.execute(options)
+    else:
+        print('No task provided, run with -h to see available options')
 
 
 if __name__ == '__main__':

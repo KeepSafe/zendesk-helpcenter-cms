@@ -2,7 +2,7 @@ import os
 import requests
 import logging
 
-from . import model
+import model
 
 
 class WebTranslateItRequest(object):
@@ -70,9 +70,6 @@ class WebTranslateItClient(object):
 
     def move(self, item, new_path):
         # Guido weeps
-        print(type(item))
-        print(type(model.Article('section', 'name', 'body', 'filename')))
-        print(isinstance(item, model.Article))
         if isinstance(item, model.Article):
             body_translate_id, content_translate_id = item.translate_ids
             self._move_item(body_translate_id, item.body_filepath)

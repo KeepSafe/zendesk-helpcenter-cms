@@ -4,8 +4,8 @@ import json
 import html2text
 import hashlib
 
-from . import model
-from . import utils
+import model
+import utils
 
 
 class ZendeskRequest(object):
