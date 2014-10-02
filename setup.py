@@ -1,11 +1,15 @@
 import os
 from setuptools import setup, find_packages
+from pip.req import parse_requirements
 
 version = '0.0.1'
 
 
 def read(f):
     return open(os.path.join(os.path.dirname(__file__), f)).read().strip()
+
+install_reqs = parse_requirements('requirements.txt')
+reqs = [str(ir.req) for ir in install_reqs]
 
 setup(name='zendesk-helpcenter-cms',
       version=version,
@@ -23,7 +27,7 @@ setup(name='zendesk-helpcenter-cms',
       py_modules=['cms', 'filesystem', 'model', 'translate', 'utils', 'zendesk'],
       package_dir = {'': 'src'},
       namespace_packages=[],
-      install_requires = ['Markdown==2.4.1', 'html2text==2014.7.3', 'requests==2.3.0'],
+      install_requires = reqs,
       entry_points={
           'console_scripts': [
               'zendesk-help-cms = cms:main']
