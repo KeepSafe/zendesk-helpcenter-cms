@@ -25,7 +25,8 @@ class TranslateTask(object):
     def execute(self, args):
         print('Running translate task...')
         categories = filesystem.loader(args['root_folder']).load()
-        translate.translator(args['webtranslateit_api_key']).create(categories)
+        categories = translate.translator(args['webtranslateit_api_key']).create(categories)
+        filesystem.saver(args['root_folder']).save(categories)
         print('Done')
 
 
@@ -90,21 +91,11 @@ class DoctorTask(object):
         zendesk_doctor = zendesk.doctor(
             args['company_name'], args['user'], args['password'], filesystem_client, args['force'])
 
-        for category in categories:
-            print('Validating category {}'.format(category.name))
-            zendesk_doctor.fix_category(category)
-            filesystem_doctor.fix_category(category)
-            translate_doctor.fix_category(category)
-            for section in category.sections:
-                print('Validating section {}'.format(section.name))
-                zendesk_doctor.fix_section(section)
-                filesystem_doctor.fix_section(section)
-                translate_doctor.fix_section(section)
-                for article in section.articles:
-                    print('Validating article {}'.format(article.name))
-                    zendesk_doctor.fix_article(article)
-                    filesystem_doctor.fix_article(article)
-                    translate_doctor.fix_article(article)
+        zendesk_doctor.fix(categories)
+        filesystem_doctor.fix(categories)
+        translate_doctor.fix(categories)
+
+        filesystem.saver(args['root_folder']).save(categories)
 
         print('Done')
 

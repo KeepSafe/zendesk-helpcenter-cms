@@ -15,9 +15,10 @@ class TestSaver(TestCase):
 
     def test_saves_category(self):
         self.saver.save([self.category])
-
+        print(self.fs.method_calls[0])
         self.fs.save_json.assert_any_call('category/.group.meta',
-                                          {'id': 'category id', 'webtranslateit_ids': ['category translate id']})
+                                          {'id': 'category id',
+                                           'webtranslateit_ids': {'content': 'category translate id'}})
         self.fs.save_json.assert_any_call(
             'category/__group__.json', {'name': 'category', 'description': 'category desc'})
 
@@ -25,7 +26,8 @@ class TestSaver(TestCase):
         self.saver.save([self.category])
 
         self.fs.save_json.assert_any_call('category/section/.group.meta',
-                                          {'id': 'section id', 'webtranslateit_ids': ['section translate id']})
+                                          {'id': 'section id',
+                                           'webtranslateit_ids': {'content': 'section translate id'}})
         self.fs.save_json.assert_any_call(
             'category/section/__group__.json', {'name': 'section', 'description': 'section desc'})
 
@@ -34,7 +36,8 @@ class TestSaver(TestCase):
 
         self.fs.save_json.assert_any_call('category/section/en-US/.article_article.meta',
                                           {'id': 'article id',
-                                           'webtranslateit_ids': ['body translate id', 'article translate id']})
+                                           'webtranslateit_ids': {'body': 'body translate id',
+                                                                  'content': 'article translate id'}})
         self.fs.save_json.assert_any_call('category/section/en-US/article.json', {'name': 'article'})
         self.fs.save_text.assert_any_call('category/section/en-US/article.mkdown', 'body')
 

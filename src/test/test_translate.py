@@ -13,6 +13,10 @@ class TestWebTranslateItClient(TestCase):
         self.category = fixtures.simple_category()
 
     def test_create_happy_path(self):
+        self.category.translate_ids = {}
+        self.category.sections[0].translate_ids = {}
+        self.category.sections[0].articles[0].translate_ids = {}
+
         self.client._create_item = MagicMock()
         with patch('builtins.open', mock_open()):
             self.client.create([self.category])

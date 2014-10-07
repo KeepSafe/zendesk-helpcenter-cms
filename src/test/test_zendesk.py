@@ -88,18 +88,3 @@ class TestPusher(TestCase):
         self.req.put_translation.assert_any_call(self.category.sections[0].articles[0], 'pl', {
                                                  'translation': {'locale': 'pl', 'title': 'dummy name',
                                                                  'body': '<p>dummy body</p>'}})
-
-
-class TestDoctor(TestCase):
-
-    def setUp(self):
-        self.req = create_autospec(zendesk.ZendeskRequest)
-        self.fs = create_autospec(filesystem.FilesystemClient)
-        self.service = zendesk.Doctor(self.req, self.fs)
-        self.category = fixtures.simple_category()
-
-    def test_fix_only_if_section_has_category_meta(self):
-        section = self.category.sections[0]
-        self.category.meta = {}
-
-        self.service.fix_section(section)

@@ -39,7 +39,6 @@ class ZendeskRequest(object):
             logging.error('getting data from %s failed. status was %s and message %s',
                           response.url, response.status_code, response.text)
             return {}
-
         return response.json()
 
     def _send_request(self, request_fn, url, data):
@@ -308,14 +307,13 @@ class Doctor(object):
         except RecordNotFoundError as e:
             logging.warning(str(e))
 
-    def fix_category(self, category):
-        self._fix_item(category)
-
-    def fix_section(self, section):
-        self._fix_item(section, section.category)
-
-    def fix_article(self, article):
-        self._fix_item(article, article.section)
+    def fix(self, categories):
+        for category in categories:
+            self._fix_item(category)
+            for section in category.sections:
+                self._fix_item(section, section.category)
+                for article in section.articles:
+                    self._fix_item(article, article.section)
 
 
 class RecordNotFoundError(Exception):

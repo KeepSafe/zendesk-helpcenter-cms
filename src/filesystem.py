@@ -279,7 +279,7 @@ class Doctor(object):
             print('Missing content file {} created'.format(item.content_filepath))
             content = item.to_content()
             for key, value in content.items():
-                new_value = input('Please provide a {} for this item (default: {})'.format(key, value))
+                new_value = input('Please provide a {} for this item (default: {}):'.format(key, value))
                 new_value = new_value or value
                 content[key] = new_value
             self.fs.save_json(item.content_filepath, content)
@@ -294,14 +294,13 @@ class Doctor(object):
         #             item_content[key] = new_value
         #         self.fs.save_json(item.content_filepath, item_content)
 
-    def fix_category(self, category):
-        self._fix_item_content(category)
-
-    def fix_section(self, section):
-        self._fix_item_content(section)
-
-    def fix_article(self, article):
-        self._fix_item_content(article)
+    def fix(self, categories):
+        for category in categories:
+            self._fix_item_content(category)
+            for section in category.sections:
+                self._fix_item_content(section)
+                for article in section.articles:
+                    self._fix_item_content(article)
 
 
 def saver(root_folder):

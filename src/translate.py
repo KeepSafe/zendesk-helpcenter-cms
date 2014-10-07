@@ -7,12 +7,23 @@ import model
 
 class WebTranslateItRequest(object):
     _default_url = 'https://webtranslateit.com/api/projects/{}/{}'
+    _project_url = 'https://webtranslateit.com/api/projects/{}.json'
+    _file_url = 'https://webtranslateit.com/api/projects/{}/files/...?file_path={}'
 
     def __init__(self, api_key):
         self.api_key = api_key
 
     def _url_for(self, path):
         return self._default_url.format(self.api_key, path)
+
+    def _path_url_for(self, path):
+        return self._file_url.format(self.api_key, path)
+
+    def get_master_files(self):
+        url = self._project_url.format(self.api_key)
+        res = requests.get(url)
+        files = res.json()['project']['project_files']
+        return list(filter(lambda f: f['locale_code'] == model.DEFAULT_LOCALE, files))
 
     def _send_request(self, request_fn, url, data, files):
         full_url = self._url_for(url)
@@ -31,10 +42,10 @@ class WebTranslateItRequest(object):
         return response.text.strip()
 
     def post(self, url, data, files=None):
-        self._send_request(requests.post, url, data, files)
+        return self._send_request(requests.post, url, data, files)
 
     def put(self, url, data, files=None):
-        self._send_request(requests.put, url, data, files)
+        return self._send_request(requests.put, url, data, files)
 
     def delete(self, url):
         full_url = self._url_for(url)
@@ -43,6 +54,7 @@ class WebTranslateItRequest(object):
 
 
 class WebTranslateItClient(object):
+
     """
     Handles all reuests to WebTranslateIt
     """
@@ -55,7 +67,40 @@ class WebTranslateItClient(object):
             normalized_filepath = os.path.relpath(filepath).replace('\\', '/')
             data = {'file': normalized_filepath, 'name': normalized_filepath}
             files = {'file': fp}
-            self.req.post('files', data, files)
+            return self.req.post('files', data, files)
+
+    def _get_translate_id(self, path, master_files):
+        master_files_for_item = list(filter(lambda f: f['name'] == path, master_files))
+        if len(master_files_for_item) > 1:
+            # TODO error?
+            return ''
+        elif len(master_files_for_item) == 1:
+            master_file = master_files_for_item[0]
+            return str(master_file['id'])
+
+    def fix_group(self, group, master_files):
+        content_path = group.content_filepath
+        translate_id = self._get_translate_id(content_path, master_files)
+        if translate_id and translate_id != group.translate_ids.get('content'):
+            print('WebTranslateIt id is missing but found {} by path.'.format(group.name))
+            group.translate_ids = {'content': translate_id}
+
+    def fix_article(self, article, master_files):
+        content_path = article.content_filepath
+        content_translate_id = self._get_translate_id(content_path, master_files)
+        translate_ids = article.translate_ids
+        if content_translate_id and content_translate_id != article.translate_ids.get('content'):
+            print('WebTranslateIt content id is missing but found {} by path.'.format(article.name))
+            translate_ids['content'] = content_translate_id
+
+        body_path = article.body_filepath
+        body_translate_id = self._get_translate_id(body_path, master_files)
+        if body_translate_id and body_translate_id != article.translate_ids.get('body'):
+            print('WebTranslateIt body id is missing but found {} by path.'.format(article.name))
+            translate_ids['body'] = body_translate_id
+
+        if translate_ids:
+            article.translate_ids = translate_ids
 
     def _move_item(self, file_id, filepath):
         with open(filepath, 'r') as file:
@@ -65,36 +110,64 @@ class WebTranslateItClient(object):
             self.req.put('files/{}/locales/{}'.format(file_id, model.DEFAULT_LOCALE), data, files)
 
     def delete(self, item):
-        for file_id in item.translate_ids:
+        for _, file_id in item.translate_ids.items():
             self.req.delete('files/{}'.format(file_id))
 
     def move(self, item, new_path):
         # Guido weeps
         if isinstance(item, model.Article):
-            body_translate_id, content_translate_id = item.translate_ids
-            self._move_item(body_translate_id, item.body_filepath)
-            self._move_item(content_translate_id, item.content_filepath)
+            self._move_item(item.translate_ids['body'], item.body_filepath)
+            self._move_item(item.translate_ids['content'], item.content_filepath)
         else:
-            content_translate_id, = item.translate_ids
-            self._move_item(content_translate_id, item.content_filepath)
+            self._move_item(item.translate_ids['content'], item.content_filepath)
 
     def create(self, categories):
         for category in categories:
-            self._create_item(category.content_filepath)
+            if not category.translate_ids.get('content'):
+                translate_id = self._create_item(category.content_filepath)
+                category.translate_ids = {'content': translate_id}
             for section in category.sections:
-                self._create_item(section.content_filepath)
+                if not section.translate_ids.get('content'):
+                    translate_id = self._create_item(section.content_filepath)
+                    section.translate_ids = {'content': translate_id}
                 for article in section.articles:
-                    self._create_item(article.content_filepath)
-                    self._create_item(article.body_filepath)
+                    translate_ids = {}
+                    if not article.translate_ids.get('content'):
+                        translate_id = self._create_item(article.content_filepath)
+                        translate_ids['content'] = translate_id
+                    if not article.translate_ids.get('body'):
+                        translate_id = self._create_item(article.body_filepath)
+                        translate_ids['body'] = translate_id
+                    article.translate_ids = translate_ids
+        return categories
+
+    def fix(self, categories):
+        master_files = self.req.get_master_files()
+        for category in categories:
+            self.fix_group(category, master_files)
+            for section in category.sections:
+                self.fix_group(section, master_files)
+                for article in section.articles:
+                    self.fix_article(article, master_files)
+        return categories
+
+
+class Translator(object):
+
+    def __init__(self, req):
+        self.client = WebTranslateItClient(req)
+
+    def create(self, categories):
+        return self.client.create(categories)
 
 
 class Remover(object):
+
     def __init__(self, req):
-        self.req = req
+        self.client = WebTranslateItClient(req)
 
     def _remove_item(self, item):
-        for translate_id in item.translate_ids:
-            self.req.delete('files/' + translate_id)
+        self.client.delete(item)
 
     # TODO the remove link should be part of the model and this should be one method.
     def _remove_article(self, article):
@@ -121,27 +194,23 @@ class Remover(object):
 
 
 class Mover(object):
+
     def __init__(self, req):
         self.req = req
 
 
 class Doctor(object):
+
     def __init__(self, req):
-        self.req = req
+        self.client = WebTranslateItClient(req)
 
-    def fix_category(self, category):
-        pass
-
-    def fix_section(self, section):
-        pass
-
-    def fix_article(self, article):
-        pass
+    def fix(self, categories):
+        self.client.fix(categories)
 
 
 def translator(api_key):
     req = WebTranslateItRequest(api_key)
-    return WebTranslateItClient(req)
+    return Translator(req)
 
 
 def remover(api_key):
