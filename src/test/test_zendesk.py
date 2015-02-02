@@ -88,3 +88,11 @@ class TestPusher(TestCase):
         self.req.put_translation.assert_any_call(self.category.sections[0].articles[0], 'pl', {
                                                  'translation': {'locale': 'pl', 'title': 'dummy name',
                                                                  'body': '<p>dummy body</p>'}})
+
+    def test_push_disable_comments(self):
+        self.req.get_missing_locales = MagicMock(return_value=['pl'])
+        pusher = zendesk.Pusher(self.req, self.fs, 'dummy_path', True)
+        pusher.push([self.category])
+
+        article = self.category.sections[0].articles[0]
+        self.req.put.assert_called_with(article, {'comments_disabled': True})

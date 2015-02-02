@@ -186,11 +186,10 @@ class Pusher(object):
                     print('Nothing changed for locale {}'.format(translation.locale))
 
     def _disable_article_comments(self, article):
-        article_id = article.zendesk_id
         data = {
-            'comments_disabled': article.comments_disabled
+            'comments_disabled': True
         }
-        self.req.put('articles/{}.json'.format(article_id), data)
+        self.req.put(article, data)
 
     def _push(self, item, parent=None):
         if not item.zendesk_id:
@@ -207,6 +206,8 @@ class Pusher(object):
                 for article in section.articles:
                     print('Pushing article %s' % article.name)
                     self._push(article, section)
+                    if self.disable_comments:
+                        self._disable_article_comments(article)
 
 
 class Remover(object):
