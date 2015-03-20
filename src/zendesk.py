@@ -239,14 +239,15 @@ class Doctor(object):
 
     def _merge_items(self, zendesk_items):
         merge = None
+        item_paths = [i['name'] for i in zendesk_items]
         if self.force:
-            print('There are {} entries with the same name, this should be an error. Since the command was run '
+            print('There are {} entries with the same name {}, this should be an error. Since the command was run '
                   'with --force option enabled every entry except the oldest will be removed'.format(
-                      len(zendesk_items)))
+                      len(zendesk_items), item_paths))
         else:
             merge = input(
-                'There are {} entries with the same name. Do you want only the oldest to be kept? (y/n)'.format(
-                    len(zendesk_items)))
+                'There are {} entries with the same name {}. Do you want only the oldest to be kept? (y/n)'.format(
+                    len(zendesk_items), item_paths))
         merge = (merge == 'y') or self.force
 
         while merge and len(zendesk_items) > 1:
