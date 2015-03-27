@@ -9,8 +9,8 @@ import utils
 
 
 class ZendeskRequest(object):
-    _default_url = 'https://{}.zendesk.com/api/v2/help_center/' + utils.to_zendesk_locale(model.DEFAULT_LOCALE) + '/{}'
-    _translations_url = 'https://{}.zendesk.com/api/v2/help_center/{}'
+    _default_url = 'https://{}/api/v2/help_center/' + utils.to_zendesk_locale(model.DEFAULT_LOCALE) + '/{}'
+    _translations_url = 'https://{}/api/v2/help_center/{}'
 
     item_url = '{}/{}.json'
     items_url = '{}.json?per_page=100'
@@ -20,17 +20,17 @@ class ZendeskRequest(object):
     translations_url = '{}/{}/translations.json?per_page=100'
     missing_translations_url = '{}/{}/translations/missing.json'
 
-    def __init__(self, company_name, user, password):
+    def __init__(self, company_uri, user, password):
         super().__init__()
-        self.company_name = company_name
+        self.company_uri = company_uri
         self.user = user
         self.password = password
 
     def _url_for(self, path):
-        return self._default_url.format(self.company_name, path)
+        return self._default_url.format(self.company_uri, path)
 
     def _translation_url_for(self, path):
-        return self._translations_url.format(self.company_name, path)
+        return self._translations_url.format(self.company_uri, path)
 
     def _parse_response(self, response):
         if response.status_code == 404:
@@ -58,7 +58,7 @@ class ZendeskRequest(object):
     def get_item(self, item):
         url = self.item_url.format(item.zendesk_group, item.zendesk_id)
         full_url = self._url_for(url)
-        response = requests.get(full_url, auth=(self.user, self.password))
+        response = requests.get(full_url, auth=(self.user, self.password), verify=False)
         return self._parse_response(response).get(item.zendesk_name, {})
 
     def get_items(self, item, parent=None):
@@ -67,19 +67,19 @@ class ZendeskRequest(object):
         else:
             url = self.items_url.format(item.zendesk_group)
         full_url = self._url_for(url)
-        response = requests.get(full_url, auth=(self.user, self.password))
+        response = requests.get(full_url, auth=(self.user, self.password), verify=False)
         return self._parse_response(response).get(item.zendesk_group, {})
 
     def get_missing_locales(self, item):
         url = self.missing_translations_url.format(item.zendesk_group, item.zendesk_id)
         full_url = self._translation_url_for(url)
-        response = requests.get(full_url, auth=(self.user, self.password))
+        response = requests.get(full_url, auth=(self.user, self.password), verify=False)
         return self._parse_response(response).get('locales', [])
 
     def get_translation(self, item, locale):
         url = self.translation_url.format(item.zendesk_group, item.zendesk_id, locale)
         full_url = self._translation_url_for(url)
-        response = requests.get(full_url, auth=(self.user, self.password))
+        response = requests.get(full_url, auth=(self.user, self.password), verify=False)
         return self._parse_response(response).get('translation', {})
 
     def put(self, item, data):
@@ -107,7 +107,7 @@ class ZendeskRequest(object):
         return self.raw_delete(full_url)
 
     def raw_delete(self, full_url):
-        response = requests.delete(full_url, auth=(self.user, self.password))
+        response = requests.delete(full_url, auth=(self.user, self.password), verify=False)
         return response.status_code == 200
 
 
@@ -240,6 +240,7 @@ class Doctor(object):
     def _merge_items(self, zendesk_items):
         merge = None
         item_paths = [i['name'] for i in zendesk_items]
+        print(zendesk_items)
         if self.force:
             print('There are {} entries with the same name {}, this should be an error. Since the command was run '
                   'with --force option enabled every entry except the oldest will be removed'.format(
@@ -322,26 +323,26 @@ class RecordNotFoundError(Exception):
     pass
 
 
-def fetcher(company_name, user, password):
-    req = ZendeskRequest(company_name, user, password)
+def fetcher(company_uri, user, password):
+    req = ZendeskRequest(company_uri, user, password)
     return Fetcher(req)
 
 
-def pusher(company_name, user, password, fs, image_cdn, disable_comments):
-    req = ZendeskRequest(company_name, user, password)
+def pusher(company_uri, user, password, fs, image_cdn, disable_comments):
+    req = ZendeskRequest(company_uri, user, password)
     return Pusher(req, fs, image_cdn, disable_comments)
 
 
-def remover(company_name, user, password):
-    req = ZendeskRequest(company_name, user, password)
+def remover(company_uri, user, password):
+    req = ZendeskRequest(company_uri, user, password)
     return Remover(req)
 
 
-def mover(company_name, user, password, image_cdn):
-    req = ZendeskRequest(company_name, user, password)
+def mover(company_uri, user, password, image_cdn):
+    req = ZendeskRequest(company_uri, user, password)
     return Mover(req, image_cdn)
 
 
-def doctor(company_name, user, password, fs, force):
-    req = ZendeskRequest(company_name, user, password)
+def doctor(company_uri, user, password, fs, force):
+    req = ZendeskRequest(company_uri, user, password)
     return Doctor(req, fs, force)

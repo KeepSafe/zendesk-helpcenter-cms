@@ -15,7 +15,7 @@ class ImportTask(object):
 
     def execute(self, args):
         print('Running import task...')
-        categories = zendesk.fetcher(args['company_name'], args['user'], args['password']).fetch()
+        categories = zendesk.fetcher(args['company_uri'], args['user'], args['password']).fetch()
         filesystem.saver(args['root_folder']).save(categories)
         print('Done')
 
@@ -33,11 +33,10 @@ class TranslateTask(object):
 class ExportTask(object):
 
     def execute(self, args):
-        DoctorTask().execute(args)
         print('Running translate task...')
         categories = filesystem.loader(args['root_folder']).load()
         filesystem_client = filesystem.client(args['root_folder'])
-        zendesk.pusher(args['company_name'], args['user'], args['password'],
+        zendesk.pusher(args['company_uri'], args['user'], args['password'],
                        filesystem_client, args['image_cdn'], args['disable_article_comments']).push(categories)
         print('Done')
 
@@ -53,7 +52,7 @@ class RemoveTask(object):
             return
 
         item = filesystem.loader(args['root_folder']).load_from_path(path)
-        zendesk.remover(args['company_name'], args['user'], args['password']).remove(item)
+        zendesk.remover(args['company_uri'], args['user'], args['password']).remove(item)
         translate.remover(args['webtranslateit_api_key']).remove(item)
         filesystem.remover(args['root_folder']).remove(item)
         print('Done')
@@ -74,7 +73,7 @@ class MoveTask(object):
             return
 
         item = filesystem.loader(args['root_folder']).load_from_path(src)
-        zendesk.mover(args['company_name'], args['user'], args['password'], args['image_cdn']).move(item, dest)
+        zendesk.mover(args['company_uri'], args['user'], args['password'], args['image_cdn']).move(item, dest)
         translate.mover(args['webtranslateit_api_key']).move(item, dest)
         filesystem.mover(args['root_folder']).move(item, dest)
         print('Done')
@@ -89,7 +88,7 @@ class DoctorTask(object):
         filesystem_doctor = filesystem.doctor(args['root_folder'])
         translate_doctor = translate.doctor(args['webtranslateit_api_key'])
         zendesk_doctor = zendesk.doctor(
-            args['company_name'], args['user'], args['password'], filesystem_client, args['force'])
+            args['company_uri'], args['user'], args['password'], filesystem_client, args['force'])
 
         zendesk_doctor.fix(categories)
         filesystem_doctor.fix(categories)
@@ -117,8 +116,8 @@ class ConfigTask(object):
 
     def _read_config_from_input(self, default_config):
         if default_config:
-            default_company_name = default_config.get('company_name', '')
-            company_name = input('Zendesk\'s company name ({}):'.format(default_company_name)) or default_company_name
+            default_company_uri = default_config.get('company_uri', '')
+            company_uri = input('Zendesk\'s company uri ({}):'.format(default_company_uri)) or default_company_uri
             default_user = default_config.get('user', '')
             user = input('Zendesk\'s user name ({}):'.format(default_user)) or default_user
             default_password = default_config.get('password', '')
@@ -132,7 +131,7 @@ class ConfigTask(object):
             disable_article_comments = input('Disable article comments ({}):'.format(default_disable_article_comments))
             disable_article_comments = disable_article_comments or default_disable_article_comments
         else:
-            company_name = input('Zendesk\'s company name:')
+            company_uri = input('Zendesk\'s company uri:')
             user = input('Zendesk\'s user name:')
             password = input('Zendesk\'s password:')
             webtranslateit_api_key = input('WebTranslateIt private API key:')
@@ -140,7 +139,7 @@ class ConfigTask(object):
             disable_article_comments = input('Disable article comments:')
 
         return {
-            'company_name': company_name,
+            'company_uri': company_uri,
             'user': user,
             'password': password,
             'webtranslateit_api_key': webtranslateit_api_key,
