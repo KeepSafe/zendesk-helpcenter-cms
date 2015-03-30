@@ -3,9 +3,12 @@ import requests
 import json
 import html2text
 import hashlib
+from operator import attrgetter
 
 import model
 import utils
+
+requests.packages.urllib3.disable_warnings()
 
 
 class ZendeskRequest(object):
@@ -45,14 +48,16 @@ class ZendeskRequest(object):
         full_url = self._url_for(url)
         response = request_fn(full_url, data=json.dumps(data),
                               auth=(self.user, self.password),
-                              headers={'Content-type': 'application/json'})
+                              headers={'Content-type': 'application/json'},
+                              verify=False)
         return self._parse_response(response)
 
     def _send_translation(self, request_fn, url, data):
         full_url = self._translation_url_for(url)
         response = request_fn(full_url, data=json.dumps(data),
                               auth=(self.user, self.password),
-                              headers={'Content-type': 'application/json'})
+                              headers={'Content-type': 'application/json'},
+                              verify=False)
         return self._parse_response(response)
 
     def get_item(self, item):
@@ -108,6 +113,7 @@ class ZendeskRequest(object):
 
     def raw_delete(self, full_url):
         response = requests.delete(full_url, auth=(self.user, self.password), verify=False)
+        print('status: {}'.format(response.status_code))
         return response.status_code == 200
 
 
@@ -238,35 +244,35 @@ class Doctor(object):
         self.force = force
 
     def _merge_items(self, zendesk_items):
-        merge = None
-        item_paths = [i['name'] for i in zendesk_items]
-        print(zendesk_items)
         if self.force:
             print('There are {} entries with the same name {}, this should be an error. Since the command was run '
                   'with --force option enabled every entry except the oldest will be removed'.format(
-                      len(zendesk_items), item_paths))
+                      len(zendesk_items), zendesk_items[0]['name']))
+            sorted_items = sorted(zendesk_items, key=attrgetter('updated_at'))
+            for item in sorted_items[:-1]:
+                print('removing item with id: {}'.format(item['id']))
+                self.req.raw_delete(item['url'])
+            return sorted_items[0]
         else:
-            merge = input(
-                'There are {} entries with the same name {}. Do you want only the oldest to be kept? (y/n)'.format(
-                    len(zendesk_items), item_paths))
-        merge = (merge == 'y') or self.force
+            print('There are {} entries with the same name {}:'.format(len(zendesk_items), zendesk_items[0]['name']))
+            for idx, item in enumerate(zendesk_items):
+                print('{}. created: {}, updated: {}, link: {}'.format(idx + 1, item['created_at'], item['updated_at'], item['html_url']))
+            article_nr = int(input('Pick a number you wish to keep or 0 to keep all of them: '))
 
-        while merge and len(zendesk_items) > 1:
-            first = zendesk_items[0]
-            second = zendesk_items[1]
-            if first['created_at'] > second['created_at']:
-                self.req.raw_delete(first['url'])
-                del zendesk_items[0]
-            else:
-                self.req.raw_delete(second['url'])
-                del zendesk_items[1]
-        return zendesk_items
+            if article_nr == 0 or article_nr > len(zendesk_items) + 1:
+                return zendesk_items[0]
+
+            for idx, item in enumerate(zendesk_items):
+                if not article_nr == idx + 1:
+                    print('removing item with id: {}'.format(item['id']))
+                    self.req.raw_delete(item['url'])
+            return zendesk_items[article_nr - 1]
 
     def _fetch_item(self, item, parent=None):
         zendesk_items = self.req.get_items(item, parent)
         named_items = list(filter(lambda i: i['name'] == item.name, zendesk_items))
         if len(named_items) > 1:
-            named_items = self._merge_items(named_items)
+            return self._merge_items(named_items)
         if len(named_items) == 1:
             return named_items[0]
         return {}
