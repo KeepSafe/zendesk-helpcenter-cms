@@ -8,7 +8,7 @@ import filesystem
 import translate
 
 DEFAULE_LOG_LEVEL = 'WARNING'
-CONFIG_FILE = 'translator.config'
+CONFIG_FILE = '.zendesk-help-cms.config'
 
 
 class ImportTask(object):
@@ -117,7 +117,7 @@ class ConfigTask(object):
     def _read_config_from_input(self, default_config):
         if default_config:
             default_company_uri = default_config.get('company_uri', '')
-            company_uri = input('Zendesk\'s company uri ({}):'.format(default_company_uri)) or default_company_uri
+            company_uri = input('Zendesk\'s company uri (for example test_company.zendesk.com) ({}):'.format(default_company_uri)) or default_company_uri
             default_user = default_config.get('user', '')
             user = input('Zendesk\'s user name ({}):'.format(default_user)) or default_user
             default_password = default_config.get('password', '')

@@ -2,7 +2,7 @@
 [DEFAULT]
 
 # Zendesk company name
-company_uri = testingzendesk12
+company_uri = testingzendesk12.zendesk.com
 
 # Zendesk user name and password (or token)
 user = zendesk@maildrop.cc/token
