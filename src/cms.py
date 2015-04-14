@@ -8,7 +8,7 @@ import filesystem
 import translate
 
 DEFAULE_LOG_LEVEL = 'WARNING'
-CONFIG_FILE = '.zendesk-help-cms.config'
+CONFIG_FILE = 'zendesk-help-cms.config'
 
 
 class ImportTask(object):
