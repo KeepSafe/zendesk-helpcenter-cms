@@ -20,7 +20,7 @@ Type `zendesk-help-cms -h` and `zendesk-help-cms [command] -h` to see help messa
 
 ### Configuration
 
-In the directory you want to have your Zendesk articles type `zendesk-help-cms config`. You will be ask for information required by the script. the information will be saved in `.zendesk-help-cms.config` file. If you need to override some values just run `zendesk-help-cms config` again. If the file exists it will offer existing values as defaults. You can also manually create/override values in the file if you wish to do so but make sure the syntax is correct.
+In the directory you want to have your Zendesk articles type `zendesk-help-cms config`. You will be ask for information required by the script. the information will be saved in `zendesk-help-cms.config` file. If you need to override some values just run `zendesk-help-cms config` again. If the file exists it will offer existing values as defaults. You can also manually create/override values in the file if you wish to do so but make sure the syntax is correct.
 
 The current working directory is used as the root for the script. This means the categories will be created at that level.
 
