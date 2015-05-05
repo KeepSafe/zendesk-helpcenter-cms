@@ -49,28 +49,34 @@ class FilesystemClient(object):
             return {}
 
     def read_directories(self, path):
-        if os.path.exists(path):
-            return [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d)) and not d.startswith('.')]
+        full_path = self._path_for(path)
+        if os.path.exists(full_path):
+            return [d for d in os.listdir(full_path) if os.path.isdir(os.path.join(full_path, d)) and not d.startswith('.')]
         else:
             return []
 
     def read_files(self, path):
-        if os.path.exists(path):
-            return [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+        full_path = self._path_for(path)
+        if os.path.exists(full_path):
+            return [f for f in os.listdir(full_path) if os.path.isfile(os.path.join(full_path, f))]
         else:
             return []
 
-    def remove(self, filepath):
-        if os.path.exists(filepath):
-            os.remove(filepath)
+    def remove(self, path):
+        full_path = self._path_for(path)
+        if os.path.exists(full_path):
+            os.remove(full_path)
 
     def remove_dir(self, path):
-        if os.path.exists(path):
-            shutil.rmtree(path)
+        full_path = self._path_for(path)
+        if os.path.exists(full_path):
+            shutil.rmtree(full_path)
 
     def move(self, old_path, new_path):
-        if os.path.exists(old_path):
-            shutil.move(old_path, new_path)
+        old_full_path = self._path_for(old_path)
+        new_full_path = self._path_for(new_path)
+        if os.path.exists(old_full_path):
+            shutil.move(old_full_path, new_full_path)
 
 
 class Saver(object):

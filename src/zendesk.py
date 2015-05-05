@@ -113,7 +113,6 @@ class ZendeskRequest(object):
 
     def raw_delete(self, full_url):
         response = requests.delete(full_url, auth=(self.user, self.password), verify=False)
-        print('status: {}'.format(response.status_code))
         return response.status_code == 200
 
 
