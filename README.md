@@ -1,4 +1,4 @@
-zendesk-helpcenter-cms
+zendesk-helpcenter-cms [![Build Status](https://travis-ci.org/KeepSafe/zendesk-helpcenter-cms.svg)](https://travis-ci.org/KeepSafe/zendesk-helpcenter-cms)
 ===================
 
 Python script for zendesk helpcenter translations.
