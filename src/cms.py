@@ -185,6 +185,7 @@ def parse_args():
                         default=os.getcwd())
     parser.add_argument('-f', '--force', help='Don\'t ask questions. YES all the way',
                         action='store_true', default=False)
+    parser.add_argument('-v', '--version', help='Show version', action='store_true')
 
     # Task subparser settings
     task_parsers['remove'].add_argument('path',
@@ -212,6 +213,11 @@ def parse_config(args):
 
 def main():
     args = parse_args()
+    if args.version:
+        import pkg_resources
+        version = pkg_resources.require('zendesk-helpcenter-cms')[0].version
+        print(version)
+        return
     init_log(args.loglevel)
     options = parse_config(args)
     task_name = options.get('task')
